@@ -105,7 +105,7 @@ impl eframe::App for MyApp {
       .unwrap_or_default();
     let offer_price =
       self.user_inputs.price_to_offer.parse::<u32>().unwrap_or_default();
-    let item_names: Vec<String> = self
+    let items: Vec<String> = self
       .user_inputs
       .item_names
       .lines()
@@ -114,18 +114,17 @@ impl eframe::App for MyApp {
       .collect();
 
     // А зачем каждый фрейм?
-    // self.ducats_buyer = self
-    //   .ducats_buyer
-    //   .with_item_names(item_names)
-    //   .with_filter(move |order| {
-    //     // Add 'move' keyword here
-    //     return order.user.status == "ingame"
-    //       && order.order_type == "sell"
-    //       && order.visible
-    //       && order.quantity >= min_quantity
-    //       && order.platinum <= max_price;
-    //   })
-    //   .with_desired_price(offer_price);
+    self.ducats_buyer =
+      DucatsBuyer { items, price: offer_price, ..Default::default() }
+        .with_filter(move |order| {
+          return order.user.status == "ingame"
+            && order.order_type == "sell"
+            && order.visible
+              // TODO: я ж к этому и веду, если тебе нужны такие фильтры,
+              //  то сделай интерфейс, который бы поля в egui хотя бы перечислял
+            && order.quantity >= min_quantity
+            && order.platinum <= max_price;
+        });
 
     egui::CentralPanel::default().show(ctx, |ui| {
       ui.with_layout(Layout::top_down_justified(Align::Center), |ui| {
