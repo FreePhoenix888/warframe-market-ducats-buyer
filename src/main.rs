@@ -4,12 +4,14 @@
 mod external_lib;
 mod lib;
 
+use std::sync::Arc;
 use eframe::egui;
 use eframe::egui::{Align, Button, DragValue, Layout, ScrollArea, Spinner, TextEdit};
 use std::sync::mpsc::{self, TryRecvError};
 use crate::lib::DucatsBuyer;
 
-fn main() -> eframe::Result {
+#[tokio::main]
+async fn main() -> eframe::Result {
     env_logger::init(); // Log to stderr (use RUST_LOG=debug for details)
     let options = eframe::NativeOptions {
         window_builder: Some(Box::new(|builder| builder.with_maximized(true))),
@@ -31,7 +33,7 @@ struct UserInputs {
 }
 
 struct MyApp {
-    ducats_buyer: lib::DucatsBuyer,
+    ducats_buyer: Arc<lib::DucatsBuyer>,
     rx: mpsc::Receiver<String>,
     tx: mpsc::Sender<String>,
     loading: bool,
@@ -57,7 +59,7 @@ impl Default for MyApp {
         let (tx, rx) = mpsc::channel();
         let default_inputs = UserInputs::default();
         Self {
-            ducats_buyer: lib::DucatsBuyer::new(),
+            ducats_buyer: Arc::from(lib::DucatsBuyer::new()),
             rx,
             tx,
             loading: false,
@@ -93,7 +95,7 @@ impl eframe::App for MyApp {
             .filter(|s| !s.is_empty())
             .collect();
 
-        self.ducats_buyer
+        self.ducats_buyer = Arc::from(self.ducats_buyer
             .with_item_names(item_names)
             .with_filter(move |order| { // Add 'move' keyword here
                 return order.user.status == "ingame" &&
@@ -102,7 +104,7 @@ impl eframe::App for MyApp {
                     order.quantity >= min_quantity &&
                     order.platinum <= max_price
             })
-            .with_desired_price(offer_price);
+            .with_desired_price(offer_price));
 
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.with_layout(Layout::top_down_justified(Align::Center), |ui| {
@@ -166,23 +168,20 @@ impl eframe::App for MyApp {
 
 
 
-                        std::thread::spawn(move || {
-                            let rt = tokio::runtime::Runtime::new().unwrap();
-                            rt.block_on(async {
-
-                                let min_quantity = min_quantity;
-                                let max_price = max_price;
+                        tokio::spawn(async move {
+                            let min_quantity = min_quantity;
+                            let max_price = max_price;
 
 
-                                let fetch_result = self.ducats_buyer.fetch_orders().await;
-                                let _ = match fetch_result {
-                                    Ok(buyer) => Ok(buyer.process_orders().expect("failed to process orders").get_orders().to_vec()),
-                                    Err(e) => {
-                                        tx.send(format!("{:?}", e)).unwrap_or_else(|_| {});
-                                        Err(e) // Return an error here instead of Ok(())
-                                    },
-                                };
-                            });
+                            let fetch_result = self.ducats_buyer.fetch_orders().await;
+                            let _ = match fetch_result {
+                                Ok(buyer) => Ok(buyer.process_orders().expect("failed to process orders").get_orders().to_vec()),
+                                Err(e) => {
+                                    tx.send(format!("{:?}", e)).unwrap_or_else(|_| {});
+                                    Err(e) // Return an error here instead of Ok(())
+                                },
+                            };
+
                         });
                     }                });
 
