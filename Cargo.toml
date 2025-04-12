@@ -1,0 +1,17 @@
+[package]
+name = "warframe_market_ducats_buyer"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+mock = []
+
+[dependencies]
+reqwest = { version = "0.12.15", features = ["json", "blocking"] }
+tokio = { version = "1.0.0", features = ["rt", "rt-multi-thread", "macros"] }
+serde = { version = "1.0.219", features = ["derive"] }
+env_logger = "0.11.8"
+eframe = "0.31.1"
+rand = "0.9.0"
+fake = "4.3.0"
+convert_case = "0.8.0"
