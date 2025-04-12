@@ -21,8 +21,8 @@ pub struct Payload {
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Order {
     pub id: String,
-    pub platinum: i64,
-    pub quantity: i64,
+    pub platinum: i32,
+    pub quantity: i32,
     pub order_type: String,
     // pub platform: String,
     // pub region: String,
@@ -37,9 +37,9 @@ pub struct Order {
     #[serde(skip_deserializing)]
     pub item_name: Option<String>,
     #[serde(skip_deserializing)]
-    pub desired_price: Option<i64>,
+    pub price_to_offer: Option<i32>,
     #[serde(skip_deserializing)]
-    pub desired_sum: Option<i64>,
+    pub sum_to_offer: Option<i32>,
     #[serde(skip_deserializing)]
     pub is_with_group: Option<bool>,
 }
@@ -265,171 +265,21 @@ pub struct Drop11 {
 
 const BASE_URL: &str = "https://api.warframe.market/v1";
 
+pub const MIN_QUANTITY_TO_SEARCH: i32 = 2;
+pub const MAX_PRICE_TO_SEARCH: i32 = 4;
+
+pub const PRICE_TO_OFFER: i32 = 3;
+
+
 pub fn default_order_filter(order: &Order) -> bool {
     let is_order_profitable = order.user.status == "ingame"
     && order.order_type == "sell"
     && order.visible
-    && order.platinum <= 4
-    && order.quantity >= 2;
+    && order.platinum <= MAX_PRICE_TO_SEARCH
+    && order.quantity >= MIN_QUANTITY_TO_SEARCH;
 
     is_order_profitable
  }
-
-async fn fetch_profitable_orders_with_filter(
-    item_name: &str,
-    filter_fn: impl Fn(&Order) -> bool
-) -> Result<Vec<Order>, Box<dyn std::error::Error>> {
-
-    let get_orders_response = reqwest::get(BASE_URL.to_owned() + "/items/" + item_name + "/orders")
-        .await?
-        .json::<GetOrdersResponse>()
-        .await?;
-
-    let profitable_orders: Vec<Order> = get_orders_response.payload.orders
-        .iter()
-        .filter(|&order| filter_fn(order))
-        .map(|order| {
-            let mut enriched_order = order.clone();
-            enriched_order.item_name = Some(item_name.to_string());
-            let item_url = item_name.to_case(Case::Snake);
-            enriched_order.item_url = Some(item_url.to_string());
-            enriched_order
-        })
-        .collect();
-
-    Ok(profitable_orders)
-}
-
-pub fn generate_message(order: &Order) -> String {
-    let user = &order.user.ingame_name;
-    let item_url = order.item_url.as_ref().unwrap();
-    let platinum = order.platinum;
-    let quantity = order.quantity;
-    let desired_price = order.desired_price.unwrap();
-    let desired_sum = order.desired_sum.unwrap();
-    let item_name = item_url.to_case(Case::Pascal);
-
-    // TODO: use item_name
-    if quantity == 1 {
-        format!(
-            "/w {user} Hi, {user}!\
-        You have WTS order: {item_name} for {platinum} :platinum: for each on warframe.market. \
-        I want to buy! :)",
-            user = user,
-            item_name = item_name, platinum= platinum,
-        )
-    } else {
-        if desired_price == platinum {
-            format!(
-                "/w {user} Hi, {user}!\
-        You have WTS order: {item_name} for {platinum} :platinum: for each on warframe.market. \
-        I want to buy all {quantity} pieces",
-                user = user,
-                item_name = item_name, platinum= platinum,
-                quantity=quantity,
-            )
-        } else {
-            format!(
-                "/w {user} Hi, {user}!\
-        You have WTS order: {item_name} for {platinum} :platinum: for each on warframe.market. \
-        I want to buy all with discount {desired_price}:platinum:*{quantity}={desired_sum}:platinum: if you are interested :)",
-                user = user,
-                item_name = item_name, platinum= platinum,
-                desired_price=desired_price,
-                quantity=quantity,
-                desired_sum=desired_sum
-            )
-        }
-    }
-
-
-}
-
-pub async fn fetch_all_profitable_orders(
-) -> Result<Vec<Order>, Box<dyn std::error::Error>> {
-    let filter_fn = default_order_filter;
-    fetch_all_profitable_orders_with_filter(
-        filter_fn,
-    ).await
-}
-
-pub async fn fetch_all_profitable_orders_with_item_names(
-    item_names: Vec<String>,
-) -> Result<Vec<Order>, Box<dyn std::error::Error>> {
-    let filter = default_order_filter;
-    fetch_all_profitable_orders_with_filter_with_item_names(
-        item_names,
-        filter,
-    ).await
-}
-
-pub async fn fetch_all_profitable_orders_with_filter(
-    filter_fn: impl Fn(&Order) -> bool
-) -> Result<Vec<Order>, Box<dyn std::error::Error>> {
-    let item_names: Vec<String> = PROFITABLE_ITEM_NAMES.iter().map(|&s| {s.to_string()}).collect();
-    fetch_all_profitable_orders_with_filter_with_item_names(
-        item_names,
-        filter_fn,
-    ).await
-}
-
-pub async fn fetch_all_profitable_orders_with_filter_with_item_names(
-    item_names: Vec<String>,
-    filter_fn: impl Fn(&Order) -> bool
-) -> Result<Vec<Order>, Box<dyn std::error::Error>>
-{
-    let mut user_orders: HashMap<String, Vec<Order>> = HashMap::new();
-
-    for item_name in item_names {
-        let profitable_orders = fetch_profitable_orders_with_filter(&item_name, |order| {filter_fn(order)}).await?;
-        for order in profitable_orders {
-            user_orders
-                .entry(order.user.ingame_name.clone())
-                .or_default()
-                .push(order);
-        }
-    }
-
-    // Enrich custom fields
-    user_orders.values_mut().for_each(|orders| {
-        for order in orders.iter_mut() {
-            order.is_with_group = Some(false);
-            order.desired_price = Some(cmp::min(3, order.platinum));
-            order.desired_sum = Some(order.desired_price.unwrap() * order.quantity);
-        }
-    });
-
-    // Mark orders with group
-    user_orders
-        .values_mut()
-        .filter(|orders| orders.len() > 1)
-        .for_each(|orders| {
-            for order in orders.iter_mut() {
-                order.is_with_group = Some(true);
-            }
-        });
-
-    // Grouped and sorted by user profit
-    let mut grouped: Vec<_> = user_orders
-        .into_iter()
-        .map(|(user_name, mut orders)| {
-            orders.sort_by_key(|o| std::cmp::Reverse(o.desired_sum.unwrap()));
-            (user_name, orders)
-        })
-        .collect();
-
-    grouped.sort_by_key(|(_, orders)| {
-        std::cmp::Reverse(orders.iter().map(|o| o.desired_sum.unwrap()).sum::<i64>())
-    });
-
-    // Flatten to final list
-    let final_orders: Vec<Order> = grouped
-        .into_iter()
-        .flat_map(|(_, orders)| orders)
-        .collect();
-
-    Ok(final_orders)
-}
 
 pub const PROFITABLE_ITEM_NAMES: [&str; 36] = [
     "Harrow Prime Blueprint",
@@ -469,3 +319,176 @@ pub const PROFITABLE_ITEM_NAMES: [&str; 36] = [
     "Atlas Prime Chassis Blueprint",
     "Dual Keres Prime Blueprint",
 ];
+
+const DESIRED_PRICE: i32 = 3;
+
+pub struct DucatsBuyer {
+    item_names: Vec<String>,
+    desired_price: i32,
+    filter: Box<dyn Fn(&Order) -> bool>,
+    orders: Vec<Order>,
+}
+
+impl DucatsBuyer {
+    pub fn new() -> Self {
+        DucatsBuyer {
+            item_names: PROFITABLE_ITEM_NAMES.iter().map(<_>::to_string).collect(),
+            desired_price: DESIRED_PRICE,
+            filter: Box::new(default_order_filter),
+            orders: vec![],
+        }
+    }
+
+    pub fn with_item_names(mut self, item_names: Vec<String>) -> Self {
+        self.item_names = item_names;
+        self
+    }
+
+    pub fn with_desired_price(mut self, price: i32) -> Self {
+        self.desired_price = price;
+        self
+    }
+
+    pub fn with_filter(mut self, filter: impl Fn(&Order) -> bool + 'static) -> Self {
+        self.filter = Box::new(filter);
+        self
+    }
+
+    pub async fn fetch_order(
+        &self,
+        item_name: &str,
+    ) -> Result<Vec<Order>, Box<dyn std::error::Error>> {
+
+        let item_url = item_name.to_case(Case::Snake);
+
+        let get_orders_response = reqwest::get(BASE_URL.to_owned() + "/items/" + &item_url + "/orders")
+            .await?
+            .json::<GetOrdersResponse>()
+            .await?;
+
+        let profitable_orders: Vec<Order> = get_orders_response.payload.orders
+            .iter()
+            .filter(|&order| (self.filter)(order))
+            .map(|order| {
+                let mut enriched_order = order.clone();
+                enriched_order.item_name = Some(item_name.to_string());
+                enriched_order.item_url = Some(item_url.to_string());
+                enriched_order
+            })
+            .collect();
+
+        Ok(profitable_orders)
+    }
+
+    pub async fn fetch_orders(mut self) -> Result<Self, Box<dyn std::error::Error>> {
+        let mut user_orders: HashMap<String, Vec<Order>> = HashMap::new();
+
+        for item_name in &self.item_names {
+            let profitable_orders = self.fetch_order(&item_name).await?;
+            for order in profitable_orders {
+                user_orders
+                    .entry(order.user.ingame_name.clone())
+                    .or_default()
+                    .push(order);
+            }
+        }
+
+        // Enrich custom fields
+        user_orders.values_mut().for_each(|orders| {
+            for order in orders.iter_mut() {
+                order.is_with_group = Some(false);
+                order.price_to_offer = Some(cmp::min(PRICE_TO_OFFER, order.platinum));
+                order.sum_to_offer = Some(order.price_to_offer.unwrap() * order.quantity);
+            }
+        });
+
+        // Mark orders with group
+        user_orders
+            .values_mut()
+            .filter(|orders| orders.len() > 1)
+            .for_each(|orders| {
+                for order in orders.iter_mut() {
+                    order.is_with_group = Some(true);
+                }
+            });
+
+        // Grouped and sorted by user profit
+        let mut grouped: Vec<_> = user_orders
+            .into_iter()
+            .map(|(user_name, mut orders)| {
+                orders.sort_by_key(|o| std::cmp::Reverse(o.sum_to_offer.unwrap()));
+                (user_name, orders)
+            })
+            .collect();
+
+        grouped.sort_by_key(|(_, orders)| {
+            std::cmp::Reverse(orders.iter().map(|o| o.sum_to_offer.unwrap()).sum::<i32>())
+        });
+
+        // Flatten to final list
+        let final_orders: Vec<Order> = grouped
+            .into_iter()
+            .flat_map(|(_, orders)| orders)
+            .collect();
+
+        self.orders = final_orders;
+
+        Ok(self)
+    }
+
+    pub fn get_orders(&self) -> &[Order] {
+        &self.orders
+    }
+
+    /// Generates a message for a single order
+    pub fn generate_message(order: &Order) -> String {
+        let user = &order.user.ingame_name;
+        let item_url = order.item_url.as_ref().unwrap();
+        let platinum = order.platinum;
+        let quantity = order.quantity;
+        let desired_price = order.price_to_offer.unwrap();
+        let desired_sum = order.sum_to_offer.unwrap();
+        let item_name = item_url.to_case(Case::Pascal);
+
+        if quantity == 1 {
+            format!(
+                "/w {user} Hi, {user}!\
+                You have WTS order: {item_name} for {platinum} :platinum: for each on warframe.market. \
+                I want to buy! :)",
+                user = user,
+                item_name = item_name,
+                platinum = platinum,
+            )
+        } else if desired_price == platinum {
+            format!(
+                "/w {user} Hi, {user}!\
+                You have WTS order: {item_name} for {platinum} :platinum: for each on warframe.market. \
+                I want to buy all {quantity} pieces",
+                user = user,
+                item_name = item_name,
+                platinum = platinum,
+                quantity = quantity,
+            )
+        } else {
+            format!(
+                "/w {user} Hi, {user}!\
+                You have WTS order: {item_name} for {platinum} :platinum: for each on warframe.market. \
+                I want to buy all with discount {desired_price}:platinum:*{quantity}={desired_sum}:platinum: if you are interested :)",
+                user = user,
+                item_name = item_name,
+                platinum = platinum,
+                desired_price = desired_price,
+                quantity = quantity,
+                desired_sum = desired_sum
+            )
+        }
+    }
+
+    /// Generates messages for all stored orders
+    pub fn generate_messages(&self) -> Vec<String> {
+        self.orders
+            .iter()
+            .map(Self::generate_message)
+            .collect()
+    }
+}
