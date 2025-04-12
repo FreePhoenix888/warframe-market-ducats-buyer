@@ -31,9 +31,9 @@ struct UserInputs {
 }
 
 struct MyApp {
-    rx: mpsc::Receiver<Result<Vec<lib::Order>, String>>,
-    tx: mpsc::Sender<Result<Vec<lib::Order>, String>>,
-    orders: Option<Vec<lib::Order>>,
+    ducats_buyer: lib::DucatsBuyer,
+    rx: mpsc::Receiver<String>,
+    tx: mpsc::Sender<String>,
     loading: bool,
     user_inputs: UserInputs,
     default_inputs: UserInputs,
@@ -57,9 +57,9 @@ impl Default for MyApp {
         let (tx, rx) = mpsc::channel();
         let default_inputs = UserInputs::default();
         Self {
+            ducats_buyer: lib::DucatsBuyer::new(),
             rx,
             tx,
-            orders: None,
             loading: false,
             user_inputs: default_inputs.clone(),
             default_inputs,
@@ -72,27 +72,18 @@ impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Poll the channel for new messages without blocking the UI.
         match self.rx.try_recv() {
-            Ok(result) => {
-                match result {
-                    Ok(data) => {
-                        self.orders = Some(data);
-                        self.error_message = None;
-                    }
-                    Err(err) => {
-                        self.error_message = Some(err);
-                        self.orders = None;
-                    }
-                }
+            Ok(data) => {
+                // Successfully received a String message
+                self.error_message = None;
                 self.loading = false;
             }
             Err(TryRecvError::Empty) => {
-                /* No new data */
+                // No new data
             }
             Err(TryRecvError::Disconnected) => {
                 self.loading = false;
             }
         }
-
         let max_price = self.user_inputs.max_price_to_search.parse::<i32>().unwrap_or_default();
         let min_quantity = self.user_inputs.min_quantity_to_search.parse::<i32>().unwrap_or_default();
         let offer_price = self.user_inputs.price_to_offer.parse::<i32>().unwrap_or_default();
@@ -101,6 +92,17 @@ impl eframe::App for MyApp {
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .collect();
+
+        self.ducats_buyer
+            .with_item_names(item_names)
+            .with_filter(move |order| { // Add 'move' keyword here
+                return order.user.status == "ingame" &&
+                    order.order_type == "sell" &&
+                    order.visible &&
+                    order.quantity >= min_quantity &&
+                    order.platinum <= max_price
+            })
+            .with_desired_price(offer_price);
 
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.with_layout(Layout::top_down_justified(Align::Center), |ui| {
@@ -166,27 +168,21 @@ impl eframe::App for MyApp {
 
                         std::thread::spawn(move || {
                             let rt = tokio::runtime::Runtime::new().unwrap();
-                            let result = rt.block_on(async {
+                            rt.block_on(async {
 
                                 let min_quantity = min_quantity;
                                 let max_price = max_price;
 
-                                let ducats_buyer = lib::DucatsBuyer::new()
-                                    .with_filter(move |order| { // Add 'move' keyword here
-                                        return order.user.status == "ingame" &&
-                                            order.order_type == "sell" &&
-                                            order.visible &&
-                                            order.quantity >= min_quantity &&
-                                            order.platinum <= max_price
-                                    })
-                                    .with_desired_price(offer_price);
 
-                                match ducats_buyer.fetch_orders().await {
-                                    Ok(buyer) => Ok(buyer.get_orders().to_vec()),
-                                    Err(e) => Err(format!("{:?}", e)),
-                                }
+                                let fetch_result = self.ducats_buyer.fetch_orders().await;
+                                let _ = match fetch_result {
+                                    Ok(buyer) => Ok(buyer.process_orders().expect("failed to process orders").get_orders().to_vec()),
+                                    Err(e) => {
+                                        tx.send(format!("{:?}", e)).unwrap_or_else(|_| {});
+                                        Err(e) // Return an error here instead of Ok(())
+                                    },
+                                };
                             });
-                            let _ = tx.send(result);
                         });
                     }                });
 
@@ -196,12 +192,13 @@ impl eframe::App for MyApp {
                     ui.add(Spinner::new().size(32.0));
                 }
 
-                if let Some(orders) = &self.orders {
+                let processed_orders = self.ducats_buyer.get_processed_orders();
+                if processed_orders.len() > 0  {
                     ui.label("Fetched Order Messages:");
                     ui.add_space(10.0);
 
                     ScrollArea::new(true).show(ui, |ui| {
-                        for (i, order) in orders.iter().enumerate() {
+                        for (i, order) in processed_orders.iter().enumerate() {
                             let bg_color = if order.is_with_group.unwrap_or(false) {
                                 ui.visuals().selection.bg_fill
                             } else {

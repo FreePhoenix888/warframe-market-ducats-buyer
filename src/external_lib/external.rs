@@ -327,6 +327,7 @@ pub struct DucatsBuyer {
     desired_price: i32,
     filter: Box<dyn Fn(&Order) -> bool>,
     orders: Vec<Order>,
+    processed_orders: Vec<Order>,
 }
 
 impl DucatsBuyer {
@@ -336,6 +337,7 @@ impl DucatsBuyer {
             desired_price: DESIRED_PRICE,
             filter: Box::new(default_order_filter),
             orders: vec![],
+            processed_orders: vec![],
         }
     }
 
@@ -381,23 +383,37 @@ impl DucatsBuyer {
     }
 
     pub async fn fetch_orders(mut self) -> Result<Self, Box<dyn std::error::Error>> {
-        let mut user_orders: HashMap<String, Vec<Order>> = HashMap::new();
+        let mut all_orders = Vec::new();
 
+        // Fetch orders for each item name
         for item_name in &self.item_names {
             let profitable_orders = self.fetch_order(&item_name).await?;
-            for order in profitable_orders {
-                user_orders
-                    .entry(order.user.ingame_name.clone())
-                    .or_default()
-                    .push(order);
-            }
+            all_orders.extend(profitable_orders);
+        }
+
+        self.orders = all_orders;
+
+        Ok(self)
+    }
+
+    pub fn process_orders(
+        mut self,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let mut user_orders: HashMap<String, Vec<Order>> = HashMap::new();
+
+        // Group orders by user
+        for order in &self.orders {
+            user_orders
+                .entry(order.user.ingame_name.clone())
+                .or_default()
+                .push(order.clone());
         }
 
         // Enrich custom fields
         user_orders.values_mut().for_each(|orders| {
             for order in orders.iter_mut() {
                 order.is_with_group = Some(false);
-                order.price_to_offer = Some(cmp::min(PRICE_TO_OFFER, order.platinum));
+                order.price_to_offer = Some(cmp::min(self.desired_price, order.platinum));
                 order.sum_to_offer = Some(order.price_to_offer.unwrap() * order.quantity);
             }
         });
@@ -426,18 +442,22 @@ impl DucatsBuyer {
         });
 
         // Flatten to final list
-        let final_orders: Vec<Order> = grouped
+        let processed_orders = grouped
             .into_iter()
             .flat_map(|(_, orders)| orders)
             .collect();
 
-        self.orders = final_orders;
+        self.processed_orders = processed_orders;
 
         Ok(self)
     }
 
     pub fn get_orders(&self) -> &[Order] {
         &self.orders
+    }
+
+    pub fn get_processed_orders(&self) -> &[Order] {
+        &self.processed_orders
     }
 
     /// Generates a message for a single order
