@@ -52,6 +52,7 @@ struct MyApp {
     error_message: Option<String>,
     show_settings: bool,
     show_credits: bool,
+    show_all_orders: bool,
 }
 
 impl Default for UserInputs {
@@ -84,6 +85,7 @@ impl Default for MyApp {
             error_message: None,
             show_settings: true,
             show_credits: false,
+            show_all_orders: false,
         }
     }
 }
@@ -210,6 +212,10 @@ impl eframe::App for MyApp {
 
                     let orders_len = self.orders.as_ref().map_or(0, |orders| orders.len());
                     ui.label(format!("Orders length: {}", orders_len));
+
+                    if ui.button("Show All Orders").clicked() {
+                        self.show_all_orders = !self.show_all_orders;
+                    }
 
 
                     let is_enabled_button_process_orders = !self.loading_process
@@ -387,6 +393,27 @@ impl eframe::App for MyApp {
                     ui.hyperlink_to("Source Code", "https://github.com/FreePhoenix888/warframe-market-ducats-buyer");
                     ui.add_space(10.0);
                     ui.label("Special thanks to the Warframe community!");
+                });
+        }
+
+        if self.show_all_orders {
+            egui::Window::new("All Orders")
+                .open(&mut self.show_all_orders)
+                .resizable(true)
+                .scroll2([true, true]) // Enable scrolling
+                .show(ctx, |ui| {
+                    if let Some(orders) = &self.orders {
+                        ui.label("Fetched Orders:");
+                        ui.add_space(10.0);
+
+                        ScrollArea::vertical().show(ui, |ui| {
+                            for order in orders {
+                                ui.label(format!("{:?}", order));
+                            }
+                        });
+                    } else {
+                        ui.label("No orders fetched yet.");
+                    }
                 });
         }
 
