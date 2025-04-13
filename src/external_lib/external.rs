@@ -1,11 +1,9 @@
-use std::cmp;
-use std::collections::HashMap;
 use convert_case::{Case, Casing};
 use fake::{Fake, Faker};
-use serde::Serialize;
 use serde::Deserialize;
-use tokio::sync::mpsc;
-use crate::lib;
+use serde::Serialize;
+use std::cmp;
+use std::collections::HashMap;
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GetOrdersResponse {
@@ -53,7 +51,6 @@ pub struct User {
     // pub reputation: i64,
     // pub avatar: String,
     // pub last_seen: String,
-
     #[serde(skip_deserializing)]
     pub profitable_orders_count: Option<i32>,
 }
@@ -270,16 +267,15 @@ pub const MAX_PRICE_TO_SEARCH: i32 = 4;
 
 pub const PRICE_TO_OFFER: i32 = 3;
 
-
 pub fn default_order_filter(order: &Order) -> bool {
     let is_order_profitable = order.user.status == "ingame"
-    && order.order_type == "sell"
-    && order.visible
-    && order.platinum <= MAX_PRICE_TO_SEARCH
-    && order.quantity >= MIN_QUANTITY_TO_SEARCH;
+        && order.order_type == "sell"
+        && order.visible
+        && order.platinum <= MAX_PRICE_TO_SEARCH
+        && order.quantity >= MIN_QUANTITY_TO_SEARCH;
 
     is_order_profitable
- }
+}
 
 pub const PROFITABLE_ITEM_NAMES: [&str; 34] = [
     "Harrow Prime Blueprint",
@@ -328,12 +324,15 @@ pub async fn fetch_all_orders(
 
     for item_name in item_names {
         let item_url = item_name.to_case(Case::Snake);
-        let get_orders_response = reqwest::get(BASE_URL.to_owned() + "/items/" + &item_url + "/orders")
-            .await?
-            .json::<GetOrdersResponse>()
-            .await?;
+        let get_orders_response =
+            reqwest::get(BASE_URL.to_owned() + "/items/" + &item_url + "/orders")
+                .await?
+                .json::<GetOrdersResponse>()
+                .await?;
 
-        let enriched_orders: Vec<Order> = get_orders_response.payload.orders
+        let enriched_orders: Vec<Order> = get_orders_response
+            .payload
+            .orders
             .into_iter()
             .map(|mut order| {
                 order.item_name = Some(item_name.to_string());
@@ -343,7 +342,7 @@ pub async fn fetch_all_orders(
             .collect();
 
         for order in enriched_orders {
-            orders.push(order);;
+            orders.push(order);
         }
     }
 
@@ -351,10 +350,7 @@ pub async fn fetch_all_orders(
 }
 
 /// Filters orders based on the provided filter function.
-pub fn filter_orders(
-    orders: Vec<Order>,
-    filter: impl Fn(&Order) -> bool,
-) -> Vec<Order> {
+pub fn filter_orders(orders: Vec<Order>, filter: impl Fn(&Order) -> bool) -> Vec<Order> {
     let mut filtered_orders = vec![];
 
     for order in orders {
