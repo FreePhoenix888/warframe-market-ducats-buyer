@@ -162,6 +162,15 @@ impl eframe::App for MyApp {
                     ui.heading("Warframe Market Ducats Buyer");
                     ui.add_space(20.0);
 
+                    // Attribution and Credit
+                    ui.label("This app works thanks to ");
+                    ui.hyperlink("https://warframe.market/");
+                    ui.label("Made by ");
+                    ui.hyperlink_to("FreePhoenix888", "https://github.com/FreePhoenix888");
+                    ui.hyperlink_to("Source Code", "https://github.com/FreePhoenix888/warframe-market-ducats-buyer");
+
+                    ui.add_space(20.0);
+
                     if ui.button("Settings").clicked() {
                         self.show_settings = !self.show_settings;
                     }
