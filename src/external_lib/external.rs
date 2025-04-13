@@ -320,12 +320,11 @@ pub const PROFITABLE_ITEM_NAMES: [&str; 34] = [
 
 const DESIRED_PRICE: i32 = 3;
 
-// TODO: Return all orders and add move group-sorting logic inside process_orders. Add doc to not forget about process orders
 /// Fetches all orders for the given item names.
 pub async fn fetch_all_orders(
     item_names: &[String],
-) -> Result<HashMap<String, Vec<Order>>, Box<dyn std::error::Error>> {
-    let mut user_orders: HashMap<String, Vec<Order>> = HashMap::new();
+) -> Result<Vec<Order>, Box<dyn std::error::Error>> {
+    let mut orders: Vec<Order> = Vec::new();
 
     for item_name in item_names {
         let item_url = item_name.to_case(Case::Snake);
@@ -344,28 +343,23 @@ pub async fn fetch_all_orders(
             .collect();
 
         for order in enriched_orders {
-            user_orders
-                .entry(order.user.ingame_name.clone())
-                .or_default()
-                .push(order);
+            orders.push(order);;
         }
     }
 
-    Ok(user_orders)
+    Ok(orders)
 }
 
 /// Filters orders based on the provided filter function.
 pub fn filter_orders(
-    orders: &HashMap<String, Vec<Order>>,
+    orders: Vec<Order>,
     filter: impl Fn(&Order) -> bool,
 ) -> Vec<Order> {
     let mut filtered_orders = vec![];
 
-    for order_list in orders.values() {
-        for order in order_list {
-            if filter(order) {
-                filtered_orders.push(order.clone());
-            }
+    for order in orders {
+        if filter(&order) {
+            filtered_orders.push(order.clone());
         }
     }
 
@@ -397,20 +391,20 @@ pub fn process_orders(orders: Vec<Order>) -> Vec<Order> {
         });
 
     // Group by profit and sort
-    let mut grouped: Vec<_> = grouped_orders
+    let mut processed_orders: Vec<_> = grouped_orders
         .into_iter()
         .map(|(user_name, mut orders)| {
-            orders.sort_by_key(|o| std::cmp::Reverse(o.sum_to_offer.unwrap()));
+            orders.sort_by_key(|o| std::cmp::Reverse(o.quantity));
             (user_name, orders)
         })
         .collect();
 
-    grouped.sort_by_key(|(_, orders)| {
-        std::cmp::Reverse(orders.iter().map(|o| o.sum_to_offer.unwrap()).sum::<i32>())
+    processed_orders.sort_by_key(|(_, orders)| {
+        std::cmp::Reverse(orders.iter().map(|o| o.quantity).sum::<i32>())
     });
 
     // Flatten to final list
-    grouped
+    processed_orders
         .into_iter()
         .flat_map(|(_, orders)| orders)
         .collect()

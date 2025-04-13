@@ -7,7 +7,6 @@ mod lib;
 use eframe::egui;
 use eframe::egui::{Align, Button, DragValue, Frame, Layout, Rounding, ScrollArea, Spinner, Stroke, TextEdit};
 use std::sync::mpsc::{self, TryRecvError};
-use crate::lib::DucatsBuyer;
 
 fn main() -> eframe::Result {
     env_logger::init(); // Log to stderr (use RUST_LOG=debug for details)
@@ -171,8 +170,20 @@ impl eframe::App for MyApp {
                                 let min_quantity = min_quantity;
                                 let max_price = max_price;
 
+                                let filter_orders = |order: &lib::Order| -> bool {
+                                    return order.user.status == "ingame" &&
+                                        order.visible &&
+                                        order.order_type == "sell" &&
+                                        order.platinum <= max_price &&
+                                        order.quantity >= min_quantity;
+                                };
+
                                 match lib::fetch_all_orders(&item_names).await {
-                                    Ok(buyer) => Ok(buyer.get_orders().to_vec()),
+                                    Ok(orders) => {
+                                        let filtered_orders = lib::filter_orders(orders, filter_orders);
+                                        let processed_orders = lib::process_orders(filtered_orders);
+                                        Ok(processed_orders)
+                                    },
                                     Err(e) => Err(format!("{:?}", e)),
                                 }
                             });
@@ -198,7 +209,7 @@ impl eframe::App for MyApp {
                                 Stroke::new(1.0, ui.visuals().extreme_bg_color) // Default outline
                             };
 
-                            let message = DucatsBuyer::generate_message(order);
+                            let message = lib::generate_message(order, offer_price);
 
                             Frame::none()
                                 .stroke(frame_stroke)

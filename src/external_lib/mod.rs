@@ -12,5 +12,6 @@ pub use external::MAX_PRICE_TO_SEARCH;
 
 pub use external::fetch_all_orders;
 pub use external::filter_orders;
+pub use external::process_orders;
 pub use external::generate_message;
 pub use external::generate_messages;
