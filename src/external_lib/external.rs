@@ -51,8 +51,6 @@ pub struct User {
     // pub reputation: i64,
     // pub avatar: String,
     // pub last_seen: String,
-    #[serde(skip_deserializing)]
-    pub profitable_orders_count: Option<i32>,
 }
 
 impl Default for User {
@@ -60,7 +58,6 @@ impl Default for User {
         User {
             ingame_name: Faker.fake(),
             status: Faker.fake(),
-            profitable_orders_count: Faker.fake(),
         }
     }
 }
