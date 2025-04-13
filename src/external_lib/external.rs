@@ -19,8 +19,8 @@ pub struct Payload {
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Order {
     pub id: String,
-    pub platinum: i32,
-    pub quantity: i32,
+    pub platinum: u32,
+    pub quantity: u32,
     pub order_type: String,
     // pub platform: String,
     // pub region: String,
@@ -35,9 +35,9 @@ pub struct Order {
     #[serde(skip_deserializing)]
     pub item_name: Option<String>,
     #[serde(skip_deserializing)]
-    pub price_to_offer: Option<i32>,
+    pub price_to_offer: Option<u32>,
     #[serde(skip_deserializing)]
-    pub sum_to_offer: Option<i32>,
+    pub sum_to_offer: Option<u32>,
     #[serde(skip_deserializing)]
     pub is_with_group: Option<bool>,
 }
@@ -262,10 +262,10 @@ pub struct Drop11 {
 
 const BASE_URL: &str = "https://api.warframe.market/v1";
 
-pub const MIN_QUANTITY_TO_SEARCH: i32 = 2;
-pub const MAX_PRICE_TO_SEARCH: i32 = 4;
+pub const MIN_QUANTITY_TO_SEARCH: u32 = 2;
+pub const MAX_PRICE_TO_SEARCH: u32 = 4;
 
-pub const PRICE_TO_OFFER: i32 = 3;
+pub const PRICE_TO_OFFER: u32 = 3;
 
 pub fn default_order_filter(order: &Order) -> bool {
     let is_order_profitable = order.user.status == "ingame"
@@ -314,7 +314,7 @@ pub const PROFITABLE_ITEM_NAMES: [&str; 34] = [
     "Dual Keres Prime Blueprint",
 ];
 
-const DESIRED_PRICE: i32 = 3;
+const DESIRED_PRICE: u32 = 3;
 
 /// Fetches all orders for the given item names.
 pub async fn fetch_all_orders(
@@ -396,7 +396,7 @@ pub fn process_orders(orders: Vec<Order>) -> Vec<Order> {
         .collect();
 
     processed_orders.sort_by_key(|(_, orders)| {
-        std::cmp::Reverse(orders.iter().map(|o| o.quantity).sum::<i32>())
+        std::cmp::Reverse(orders.iter().map(|o| o.quantity).sum::<u32>())
     });
 
     // Flatten to final list
@@ -407,7 +407,7 @@ pub fn process_orders(orders: Vec<Order>) -> Vec<Order> {
 }
 
 /// Generates a message for a single order.
-pub fn generate_message(order: &Order, desired_price: i32) -> String {
+pub fn generate_message(order: &Order, desired_price: u32) -> String {
     let user = &order.user.ingame_name;
     let platinum = order.platinum;
     let quantity = order.quantity;
@@ -450,7 +450,7 @@ pub fn generate_message(order: &Order, desired_price: i32) -> String {
 }
 
 /// Generates messages for all processed orders.
-pub fn generate_messages(orders: &[Order], desired_price: i32) -> Vec<String> {
+pub fn generate_messages(orders: &[Order], desired_price: u32) -> Vec<String> {
     orders
         .iter()
         .map(|order| generate_message(order, desired_price))

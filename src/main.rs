@@ -95,17 +95,17 @@ impl eframe::App for MyApp {
         let max_price = self
             .user_inputs
             .max_price_to_search
-            .parse::<i32>()
+            .parse::<u32>()
             .unwrap_or_default();
         let min_quantity = self
             .user_inputs
             .min_quantity_to_search
-            .parse::<i32>()
+            .parse::<u32>()
             .unwrap_or_default();
         let offer_price = self
             .user_inputs
             .price_to_offer
-            .parse::<i32>()
+            .parse::<u32>()
             .unwrap_or_default();
         let item_names: Vec<String> = self
             .user_inputs
@@ -123,12 +123,12 @@ impl eframe::App for MyApp {
                 // Input fields section
                 egui::Grid::new("input_grid").num_columns(3).show(ui, |ui| {
                     ui.label("Max Price:");
-                    if let Ok(mut value) = self.user_inputs.max_price_to_search.parse::<i32>() {
+                    if let Ok(mut value) = self.user_inputs.max_price_to_search.parse::<u32>() {
                         if ui
                             .add(
                                 DragValue::new(&mut value)
-                                    .clamp_range(0..=i32::MAX)
-                                    .speed(1),
+                                    .clamp_range(0..=10)
+                                    .speed(0.02),
                             )
                             .changed()
                         {
@@ -138,12 +138,12 @@ impl eframe::App for MyApp {
                     ui.end_row();
 
                     ui.label("Min Quantity:");
-                    if let Ok(mut value) = self.user_inputs.min_quantity_to_search.parse::<i32>() {
+                    if let Ok(mut value) = self.user_inputs.min_quantity_to_search.parse::<u32>() {
                         if ui
                             .add(
                                 DragValue::new(&mut value)
-                                    .clamp_range(0..=i32::MAX)
-                                    .speed(1),
+                                    .clamp_range(0..=10)
+                                    .speed(0.02),
                             )
                             .changed()
                         {
@@ -153,12 +153,12 @@ impl eframe::App for MyApp {
                     ui.end_row();
 
                     ui.label("Offer Price:");
-                    if let Ok(mut value) = self.user_inputs.price_to_offer.parse::<i32>() {
+                    if let Ok(mut value) = self.user_inputs.price_to_offer.parse::<u32>() {
                         if ui
                             .add(
                                 DragValue::new(&mut value)
-                                    .clamp_range(0..=i32::MAX)
-                                    .speed(1),
+                                    .clamp_range(0..=10)
+                                    .speed(0.02),
                             )
                             .changed()
                         {
