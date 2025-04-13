@@ -9,8 +9,15 @@ use eframe::egui::{
     Align, Button, DragValue, Frame, Layout, Rounding, ScrollArea, Spinner, Stroke, TextEdit,
 };
 use std::sync::mpsc::{self, TryRecvError};
+use log::{debug, error, info, warn};
 
 fn main() -> eframe::Result {
+    if std::env::var("RUST_LOG").is_err() {
+        // Set a default log level if RUST_LOG is not set
+        unsafe {
+            std::env::set_var("RUST_LOG", "info");
+        }
+    }
     env_logger::init(); // Log to stderr (use RUST_LOG=debug for details)
     let options = eframe::NativeOptions {
         window_builder: Some(Box::new(|builder| builder.with_maximized(true))),
@@ -32,10 +39,14 @@ struct UserInputs {
 }
 
 struct MyApp {
-    rx: mpsc::Receiver<Result<Vec<lib::Order>, String>>,
-    tx: mpsc::Sender<Result<Vec<lib::Order>, String>>,
+    rx_fetch: mpsc::Receiver<Result<Vec<lib::Order>, String>>,
+    tx_fetch: mpsc::Sender<Result<Vec<lib::Order>, String>>,
+    rx_process: mpsc::Receiver<Result<Vec<lib::Order>, String>>,
+    tx_process: mpsc::Sender<Result<Vec<lib::Order>, String>>,
     orders: Option<Vec<lib::Order>>,
-    loading: bool,
+    processed_orders: Option<Vec<lib::Order>>,
+    loading_fetch: bool,
+    loading_process: bool,
     user_inputs: UserInputs,
     default_inputs: UserInputs,
     error_message: Option<String>,
@@ -43,7 +54,6 @@ struct MyApp {
 
 impl Default for UserInputs {
     fn default() -> Self {
-        // Replace these with actual default values from your lib
         Self {
             max_price_to_search: lib::MAX_PRICE_TO_SEARCH.to_string(),
             min_quantity_to_search: lib::MIN_QUANTITY_TO_SEARCH.to_string(),
@@ -55,13 +65,18 @@ impl Default for UserInputs {
 
 impl Default for MyApp {
     fn default() -> Self {
-        let (tx, rx) = mpsc::channel();
+        let (tx_fetch, rx_fetch) = mpsc::channel();
+        let (tx_process, rx_process) = mpsc::channel();
         let default_inputs = UserInputs::default();
         Self {
-            rx,
-            tx,
+            rx_fetch,
+            tx_fetch,
+            rx_process,
+            tx_process,
             orders: None,
-            loading: false,
+            processed_orders: None,
+            loading_fetch: false,
+            loading_process: false,
             user_inputs: default_inputs.clone(),
             default_inputs,
             error_message: None,
@@ -71,24 +86,50 @@ impl Default for MyApp {
 
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Poll the channel for new messages without blocking the UI.
-        match self.rx.try_recv() {
+        // Poll the fetch channel for new messages
+        match self.rx_fetch.try_recv() {
             Ok(result) => {
                 match result {
                     Ok(data) => {
+                        info!("Successfully received fetched data. len {:?}", data.len());
                         self.orders = Some(data);
                         self.error_message = None;
                     }
                     Err(err) => {
+                        error!("Error fetching orders: {}", err);
                         self.error_message = Some(err);
                         self.orders = None;
                     }
                 }
-                self.loading = false;
+                self.loading_fetch = false;
             }
-            Err(TryRecvError::Empty) => { /* No new data */ }
+            Err(TryRecvError::Empty) => {
+
+            }
             Err(TryRecvError::Disconnected) => {
-                self.loading = false;
+                warn!("Fetch channel disconnected.");
+                self.loading_fetch = false;
+            }
+        }
+
+        // Poll the process channel for new messages
+        match self.rx_process.try_recv() {
+            Ok(result) => {
+                match result {
+                    Ok(data) => {
+                        self.processed_orders = Some(data);
+                        self.error_message = None;
+                    }
+                    Err(err) => {
+                        self.error_message = Some(err);
+                        self.processed_orders = None;
+                    }
+                }
+                self.loading_process = false;
+            }
+            Err(TryRecvError::Empty) => {}
+            Err(TryRecvError::Disconnected) => {
+                self.loading_process = false;
             }
         }
 
@@ -188,50 +229,90 @@ impl eframe::App for MyApp {
                     if ui
                         .add_sized([150.0, 30.0], Button::new("Fetch Orders"))
                         .clicked()
-                        && !self.loading
+                        && !self.loading_fetch
                     {
-                        self.loading = true;
-                        let tx = self.tx.clone();
+                        info!("Starting to fetch orders...");
+                        self.loading_fetch = true;
+                        let tx = self.tx_fetch.clone();
 
                         std::thread::spawn(move || {
                             let rt = tokio::runtime::Runtime::new().unwrap();
                             let result = rt.block_on(async {
-                                let min_quantity = min_quantity;
-                                let max_price = max_price;
-
-                                let filter_orders = |order: &lib::Order| -> bool {
-                                    return order.user.status == "ingame"
-                                        && order.visible
-                                        && order.order_type == "sell"
-                                        && order.platinum <= max_price
-                                        && order.quantity >= min_quantity;
-                                };
-
                                 match lib::fetch_all_orders(&item_names).await {
                                     Ok(orders) => {
-                                        let processed_orders = lib::process_orders(orders.clone(), filter_orders);
-                                        Ok(processed_orders)
-                                    }
-                                    Err(e) => Err(format!("{:?}", e)),
+                                        info!("Successfully fetched orders.");
+                                        Ok(orders)
+                                    },
+                                    Err(e) => {
+                                        error!("Failed to fetch orders: {:?}", e);
+                                        Err(format!("{:?}", e))
+                                    },
                                 }
                             });
                             let _ = tx.send(result);
                         });
                     }
+
+                    let orders_len = self.orders.as_ref().map_or(0, |orders| orders.len());
+                    ui.label(format!("Orders length: {}", orders_len));
+
+                    if ui
+                        .add_sized([150.0, 30.0], Button::new("Filter & Process Orders"))
+                        .clicked()
+                        && !self.loading_process
+                        && orders_len > 0
+                    {
+                        self.loading_process = true;
+                        let tx = self.tx_process.clone();
+                        let orders = self.orders.clone();
+
+                        std::thread::spawn(move || {
+                            let filter_orders = |order: &lib::Order| -> bool {
+                                order.user.status == "ingame"
+                                    && order.visible
+                                    && order.order_type == "sell"
+                                    && order.platinum <= max_price
+                                    && order.quantity >= min_quantity
+                            };
+
+                            let processed_orders = orders
+                                .map(|o| lib::process_orders(o, filter_orders))
+                                .unwrap_or_else(Vec::new);
+                            let _ = tx.send(Ok(processed_orders));
+                        });
+                    }
                 });
+
+                let processed_orders_len = self.processed_orders.as_ref().map_or(0, |orders| orders.len());
+                ui.label(format!("Processed orders length: {}", processed_orders_len));
 
                 ui.add_space(20.0);
 
-                if self.loading {
+                if self.loading_fetch {
                     ui.add(Spinner::new().size(32.0));
                 }
 
-                if let Some(orders) = &self.orders {
-                    ui.label("Fetched Order Messages:");
+                // if let Some(orders) = &self.orders {
+                //     ui.label("Fetched Orders:");
+                //     ui.add_space(10.0);
+                //
+                //     ScrollArea::new(true).show(ui, |ui| {
+                //         for order in orders {
+                //             ui.label(format!("{:?}", order));
+                //         }
+                //     });
+                // }
+                //
+                // if self.loading_process {
+                //     ui.add(Spinner::new().size(32.0));
+                // }
+
+                if let Some(processed_orders) = &self.processed_orders {
+                    ui.label("Processed Orders:");
                     ui.add_space(10.0);
 
                     ScrollArea::new(true).show(ui, |ui| {
-                        for (i, order) in orders.iter().enumerate() {
+                        for (i, order) in processed_orders.iter().enumerate() {
                             let frame_stroke = if order.is_with_group.unwrap_or(false) {
                                 Stroke::new(2.0, ui.visuals().selection.stroke.color) // Highlighted outline
                             } else {
