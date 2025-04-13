@@ -171,17 +171,7 @@ impl eframe::App for MyApp {
                                 let min_quantity = min_quantity;
                                 let max_price = max_price;
 
-                                let ducats_buyer = lib::DucatsBuyer::new()
-                                    .with_filter(move |order| { // Add 'move' keyword here
-                                        return order.user.status == "ingame" &&
-                                            order.order_type == "sell" &&
-                                            order.visible &&
-                                            order.quantity >= min_quantity &&
-                                            order.platinum <= max_price
-                                    })
-                                    .with_desired_price(offer_price);
-
-                                match ducats_buyer.fetch_orders().await {
+                                match lib::fetch_all_orders(&item_names).await {
                                     Ok(buyer) => Ok(buyer.get_orders().to_vec()),
                                     Err(e) => Err(format!("{:?}", e)),
                                 }
