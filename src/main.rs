@@ -50,7 +50,8 @@ struct MyApp {
     user_inputs: UserInputs,
     default_inputs: UserInputs,
     error_message: Option<String>,
-    show_settings: bool, // New field to toggle settings visibility
+    show_settings: bool,
+    show_credits: bool,
 }
 
 impl Default for UserInputs {
@@ -82,6 +83,7 @@ impl Default for MyApp {
             default_inputs,
             error_message: None,
             show_settings: true,
+            show_credits: false,
         }
     }
 }
@@ -162,12 +164,9 @@ impl eframe::App for MyApp {
                     ui.heading("Warframe Market Ducats Buyer");
                     ui.add_space(20.0);
 
-                    // Attribution and Credit
-                    ui.label("This app works thanks to ");
-                    ui.hyperlink("https://warframe.market/");
-                    ui.label("Made by ");
-                    ui.hyperlink_to("FreePhoenix888", "https://github.com/FreePhoenix888");
-                    ui.hyperlink_to("Source Code", "https://github.com/FreePhoenix888/warframe-market-ducats-buyer");
+                    if ui.button("Credits").clicked() {
+                        self.show_credits = !self.show_credits;
+                    }
 
                     ui.add_space(20.0);
 
@@ -371,6 +370,23 @@ impl eframe::App for MyApp {
                     if ui.button("Reset to Defaults").clicked() {
                         self.user_inputs = self.default_inputs.clone();
                     }
+                });
+        }
+
+        if self.show_credits {
+            egui::Window::new("Credits")
+                .open(&mut self.show_credits)
+                .resizable(true)
+                .show(ctx, |ui| {
+                    ui.label("Warframe Market Ducats Buyer");
+                    ui.label("This app works thanks to:");
+                    ui.hyperlink("https://warframe.market/");
+                    ui.add_space(10.0);
+                    ui.label("Made by:");
+                    ui.hyperlink_to("FreePhoenix888", "https://github.com/FreePhoenix888");
+                    ui.hyperlink_to("Source Code", "https://github.com/FreePhoenix888/warframe-market-ducats-buyer");
+                    ui.add_space(10.0);
+                    ui.label("Special thanks to the Warframe community!");
                 });
         }
 
