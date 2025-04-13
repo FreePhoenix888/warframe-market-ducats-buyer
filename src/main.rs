@@ -406,17 +406,21 @@ impl eframe::App for MyApp {
                         ui.label("Fetched Orders:");
                         ui.add_space(10.0);
 
-                        ScrollArea::vertical().show(ui, |ui| {
-                            for order in orders {
-                                ui.label(format!("{:?}", order));
-                            }
-                        });
+                        // Implement virtual scrolling for better performance
+                        let row_height = 20.0; // Approximate height of each row
+                        let num_rows = orders.len();
+
+                        ScrollArea::vertical()
+                            .auto_shrink([false; 2]) // Avoid resizing unnecessarily
+                            .show_rows(ui, row_height, num_rows, |ui, range| {
+                                for i in range.start..range.end {
+                                    ui.label(format!("{:?}", orders[i]));
+                                }
+                            });
                     } else {
                         ui.label("No orders fetched yet.");
                     }
                 });
-        }
-
-        ctx.request_repaint();
+        }        ctx.request_repaint();
     }
 }
