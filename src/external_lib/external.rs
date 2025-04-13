@@ -281,7 +281,7 @@ pub fn default_order_filter(order: &Order) -> bool {
     is_order_profitable
  }
 
-pub const PROFITABLE_ITEM_NAMES: [&str; 36] = [
+pub const PROFITABLE_ITEM_NAMES: [&str; 34] = [
     "Harrow Prime Blueprint",
     "Astilla Prime Stock",
     "Braton Prime Receiver",
@@ -295,11 +295,9 @@ pub const PROFITABLE_ITEM_NAMES: [&str; 36] = [
     "Scourge Prime Handle",
     "Tekko Prime Blueprint",
     "Orthos Prime Blueprint",
-    "Zakti Prime Barrel",
     "Stradavar Prime Barrel",
     "Ninkondi Prime Chain",
     "Zakti Prime Barrel",
-    "Ninkondi Prime Chain",
     "Afuris Prime Link",
     "Nidus Prime Blueprint",
     "Baza Prime Barrel",
@@ -443,12 +441,11 @@ impl DucatsBuyer {
     /// Generates a message for a single order
     pub fn generate_message(order: &Order) -> String {
         let user = &order.user.ingame_name;
-        let item_url = order.item_url.as_ref().unwrap();
         let platinum = order.platinum;
         let quantity = order.quantity;
         let desired_price = order.price_to_offer.unwrap();
         let desired_sum = order.sum_to_offer.unwrap();
-        let item_name = item_url.to_case(Case::Pascal);
+        let item_name = order.item_name.as_ref().unwrap();
 
         if quantity == 1 {
             format!(

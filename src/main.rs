@@ -5,7 +5,7 @@ mod external_lib;
 mod lib;
 
 use eframe::egui;
-use eframe::egui::{Align, Button, DragValue, Layout, ScrollArea, Spinner, TextEdit};
+use eframe::egui::{Align, Button, DragValue, Frame, Layout, Rounding, ScrollArea, Spinner, Stroke, TextEdit};
 use std::sync::mpsc::{self, TryRecvError};
 use crate::lib::DucatsBuyer;
 
@@ -202,18 +202,23 @@ impl eframe::App for MyApp {
 
                     ScrollArea::new(true).show(ui, |ui| {
                         for (i, order) in orders.iter().enumerate() {
-                            let bg_color = if order.is_with_group.unwrap_or(false) {
-                                ui.visuals().selection.bg_fill
+                            let frame_stroke = if order.is_with_group.unwrap_or(false) {
+                                Stroke::new(2.0, ui.visuals().selection.stroke.color) // Highlighted outline
                             } else {
-                                ui.visuals().extreme_bg_color
+                                Stroke::new(1.0, ui.visuals().extreme_bg_color) // Default outline
                             };
 
                             let message = DucatsBuyer::generate_message(order);
 
-                            let button = ui.add_sized([100.0, 100.0], Button::new(message.clone()));
-                            if button.clicked() {
-                                ui.ctx().copy_text(message.clone());
-                            }
+                            Frame::none()
+                                .stroke(frame_stroke)
+                                .rounding(Rounding::same(5)) // Optional: rounded corners
+                                .show(ui, |ui| {
+                                    let button = ui.add_sized([100.0, 100.0], Button::new(message.clone()));
+                                    if button.clicked() {
+                                        ui.ctx().copy_text(message.clone());
+                                    }
+                                });
 
                             ui.add_space(8.0);
                         }
