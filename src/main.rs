@@ -87,6 +87,20 @@ impl UserInputs {
     }
     self.save();
   }
+
+  pub fn reset_inputs(&mut self) {
+    self.max_price_to_search = lib::MAX_PRICE_TO_SEARCH.to_string();
+    self.min_quantity_to_search = lib::MIN_QUANTITY_TO_SEARCH.to_string();
+    self.price_to_offer = lib::PRICE_TO_OFFER.to_string();
+    self.item_names = lib::PROFITABLE_ITEM_NAMES.join("\n").to_string();
+    // Preserve presets and current_preset_name
+  }
+
+  pub fn delete_all_presets(&mut self) {
+    self.presets.clear();
+    self.current_preset_name = None;
+    self.save();
+  }
 }
 
 impl Default for UserInputs {
@@ -117,6 +131,7 @@ struct MyApp {
   show_credits: bool,
   show_all_orders: bool,
   new_preset_name: String,
+  show_delete_presets_confirmation: bool,
 }
 
 impl Default for MyApp {
@@ -139,6 +154,7 @@ impl Default for MyApp {
       show_credits: false,
       show_all_orders: false,
       new_preset_name: String::new(),
+      show_delete_presets_confirmation: false,
     }
   }
 }
@@ -342,8 +358,9 @@ impl eframe::App for MyApp {
           .resizable(true)
           .show(ctx, |ui| {
             ui.horizontal(|ui| {
+              // TODO: Reset settings to defaults should not reset presets of settings
               if ui.button("Reset Settings to Defaults").clicked() {
-                self.user_inputs = UserInputs::default();
+                self.user_inputs.reset_inputs();
               }
 
               if ui.button("Save Settings").clicked() {
@@ -356,6 +373,18 @@ impl eframe::App for MyApp {
             // Presets section
             ui.group(|ui| {
               ui.heading("Presets");
+
+              // Delete button for each preset
+              let presets_len = self.user_inputs.presets.len();
+              let should_show_delete_presets_button = presets_len > 0;
+              ui.add_enabled_ui(should_show_delete_presets_button, |ui| {
+                if ui.button("Delete All Presets")
+                    .on_hover_text("Warning: This will permanently delete all saved presets")
+                    .clicked()
+                {
+                  self.show_delete_presets_confirmation = true;
+                }
+              });
 
               // Collect preset names and their current status before the UI loop
               let preset_data: Vec<(String, bool)> = self.user_inputs.presets
@@ -379,7 +408,7 @@ impl eframe::App for MyApp {
                       self.user_inputs.load_preset(&preset_name);
                     }
 
-                    // Delete button for each preset
+
                     if ui.small_button("🗑")
                         .on_hover_text("Delete preset")
                         .clicked()
@@ -544,6 +573,50 @@ impl eframe::App for MyApp {
               ui.label("No orders fetched yet.");
             }
           });
+    }
+
+
+    if self.show_delete_presets_confirmation {
+      let modal = egui::Modal::new(egui::Id::new("delete_presets_confirmation"))
+          .show(ctx, |ui| {
+            ui.set_min_width(300.0); // Sets a minimum width for the modal
+
+            ui.vertical_centered(|ui| {
+              ui.heading("Delete All Presets?");
+              ui.add_space(8.0);
+              ui.label("Are you sure you want to delete all presets?");
+              ui.label("This action cannot be undone!");
+              ui.add_space(16.0);
+
+              ui.horizontal(|ui| {
+                // Center the buttons using available space
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                  if ui.add_sized(
+                    [100.0, 30.0],
+                    egui::Button::new("Yes, Delete All")
+                        .fill(egui::Color32::from_rgb(178, 34, 34))
+                  ).clicked() {
+                    self.user_inputs.delete_all_presets();
+                    self.toasts.warning("All presets have been deleted");
+                    self.show_delete_presets_confirmation = false;
+                  }
+
+                  ui.add_space(16.0);
+
+                  if ui.add_sized(
+                    [100.0, 30.0],
+                    egui::Button::new("Cancel")
+                  ).clicked() {
+                    self.show_delete_presets_confirmation = false;
+                  }
+                });
+              });
+            });
+          });
+
+      if modal.should_close() {
+        self.show_delete_presets_confirmation = false;
+      }
     }
 
     self.toasts.show(ctx);
