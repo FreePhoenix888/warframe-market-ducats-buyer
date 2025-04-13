@@ -269,21 +269,6 @@ impl eframe::App for MyApp {
           ui.add(Spinner::new().size(32.0));
         }
 
-        // if let Some(orders) = &self.orders {
-        //     ui.label("Fetched Orders:");
-        //     ui.add_space(10.0);
-        //
-        //     ScrollArea::new(true).show(ui, |ui| {
-        //         for order in orders {
-        //             ui.label(format!("{:?}", order));
-        //         }
-        //     });
-        // }
-        //
-        // if self.loading_process {
-        //     ui.add(Spinner::new().size(32.0));
-        // }
-
         if let Some(processed_orders) = &self.processed_orders {
           ui.label("Processed Orders:");
           ui.add_space(10.0);
