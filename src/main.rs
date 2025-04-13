@@ -105,7 +105,7 @@ impl Default for MyApp {
       loading_process: false,
       user_inputs: user_inputs,
       toasts: Toasts::new(),
-      show_settings: true,
+      show_settings: false,
       show_credits: false,
       show_all_orders: false,
     }
