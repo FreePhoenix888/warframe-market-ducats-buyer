@@ -406,21 +406,68 @@ impl eframe::App for MyApp {
                         ui.label("Fetched Orders:");
                         ui.add_space(10.0);
 
-                        // Implement virtual scrolling for better performance
-                        let row_height = 20.0; // Approximate height of each row
+                        // Virtual scrolling for better performance
+                        let row_height = 50.0; // Approximate height of each order row
                         let num_rows = orders.len();
 
                         ScrollArea::vertical()
-                            .auto_shrink([false; 2]) // Avoid resizing unnecessarily
+                            .auto_shrink([false, false])
                             .show_rows(ui, row_height, num_rows, |ui, range| {
                                 for i in range.start..range.end {
-                                    ui.label(format!("{:?}", orders[i]));
+                                    let order = &orders[i];
+
+                                    // Render each order in a simplified card
+                                    ui.group(|ui| {
+                                        ui.horizontal(|ui| {
+                                            ui.label("ID:");
+                                            ui.monospace(&order.id);
+                                        });
+
+                                        ui.horizontal(|ui| {
+                                            ui.label("Item:");
+                                            ui.monospace(order.item_name.as_deref().unwrap_or("Unknown"));
+                                            if let Some(item_url) = &order.item_url {
+                                                ui.hyperlink(format!(
+                                                    "https://warframe.market/items/{}",
+                                                    item_url
+                                                ));
+                                            }
+                                        });
+
+                                        ui.horizontal(|ui| {
+                                            ui.label("Price:");
+                                            ui.monospace(format!("{} platinum", order.platinum));
+                                        });
+
+                                        ui.horizontal(|ui| {
+                                            ui.label("Quantity:");
+                                            ui.monospace(order.quantity.to_string());
+                                        });
+
+                                        ui.horizontal(|ui| {
+                                            ui.label("User:");
+                                            ui.monospace(&order.user.ingame_name);
+                                            ui.label("(Status:");
+                                            ui.colored_label(
+                                                if order.user.status == "ingame" {
+                                                    egui::Color32::GREEN
+                                                } else {
+                                                    egui::Color32::RED
+                                                },
+                                                &order.user.status,
+                                            );
+                                            ui.label(")");
+                                        });
+
+                                        ui.separator();
+                                    });
                                 }
                             });
                     } else {
                         ui.label("No orders fetched yet.");
                     }
                 });
-        }        ctx.request_repaint();
+        }
+        ctx.request_repaint();
     }
 }
