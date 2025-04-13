@@ -209,9 +209,7 @@ impl eframe::App for MyApp {
 
                                 match lib::fetch_all_orders(&item_names).await {
                                     Ok(orders) => {
-                                        let filtered_orders =
-                                            lib::filter_orders(orders, filter_orders);
-                                        let processed_orders = lib::process_orders(filtered_orders);
+                                        let processed_orders = lib::process_orders(orders.clone(), filter_orders);
                                         Ok(processed_orders)
                                     }
                                     Err(e) => Err(format!("{:?}", e)),

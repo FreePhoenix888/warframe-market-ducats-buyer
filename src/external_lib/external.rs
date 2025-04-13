@@ -349,24 +349,13 @@ pub async fn fetch_all_orders(
     Ok(orders)
 }
 
-/// Filters orders based on the provided filter function.
-pub fn filter_orders(orders: Vec<Order>, filter: impl Fn(&Order) -> bool) -> Vec<Order> {
-    let mut filtered_orders = vec![];
-
-    for order in orders {
-        if filter(&order) {
-            filtered_orders.push(order.clone());
-        }
-    }
-
-    filtered_orders
-}
-
-/// Processes the filtered orders by enriching fields and sorting them.
-pub fn process_orders(orders: Vec<Order>) -> Vec<Order> {
+/// Processes the orders by filtering, enriching fields, sorting.
+pub fn process_orders(orders: Vec<Order>,  filter: impl Fn(&Order) -> bool) -> Vec<Order> {
     let mut grouped_orders: HashMap<String, Vec<Order>> = HashMap::new();
 
-    for mut order in orders {
+    let filtered_orders: Vec<Order> = orders.into_iter().filter(|order| filter(order)).collect();
+
+    for mut order in filtered_orders {
         order.is_with_group = Some(false);
         order.price_to_offer = Some(cmp::min(PRICE_TO_OFFER, order.platinum));
         order.sum_to_offer = Some(order.price_to_offer.unwrap() * order.quantity);
