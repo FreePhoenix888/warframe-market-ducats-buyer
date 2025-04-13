@@ -4,6 +4,9 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::cmp;
 use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::Semaphore;
+use futures::stream::{FuturesUnordered, StreamExt};
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GetOrdersResponse {
@@ -316,30 +319,55 @@ const DESIRED_PRICE: u32 = 3;
 /// Fetches all orders for the given item names.
 pub async fn fetch_all_orders(
     item_names: &[String],
-) -> Result<Vec<Order>, Box<dyn std::error::Error>> {
+) -> Result<Vec<Order>, Box<dyn std::error::Error + Send + Sync>> {
+    let semaphore = Arc::new(Semaphore::new(3)); // Limit to 3 concurrent requests
     let mut orders: Vec<Order> = Vec::new();
 
+    let mut tasks = FuturesUnordered::new();
+
     for item_name in item_names {
-        let item_url = item_name.to_case(Case::Snake);
-        let get_orders_response =
-            reqwest::get(BASE_URL.to_owned() + "/items/" + &item_url + "/orders")
-                .await?
-                .json::<GetOrdersResponse>()
+        let semaphore = semaphore.clone(); // Clone the Arc to share ownership
+        let item_name = item_name.clone();
+
+        tasks.push(tokio::spawn(async move {
+            let permit = semaphore.acquire_owned().await?; // Acquire a permit
+            let item_url = item_name.to_case(Case::Snake);
+
+            // Fetch orders from the API
+            let response = reqwest::get(BASE_URL.to_owned() + "/items/" + &item_url + "/orders")
                 .await?;
+            let get_orders_response = response.json::<GetOrdersResponse>().await?;
 
-        let enriched_orders: Vec<Order> = get_orders_response
-            .payload
-            .orders
-            .into_iter()
-            .map(|mut order| {
-                order.item_name = Some(item_name.to_string());
-                order.item_url = Some(item_url.to_string());
-                order
-            })
-            .collect();
+            let enriched_orders: Vec<Order> = get_orders_response
+                .payload
+                .orders
+                .into_iter()
+                .map(|mut order| {
+                    order.item_name = Some(item_name.to_string());
+                    order.item_url = Some(item_url.to_string());
+                    order
+                })
+                .collect();
 
-        for order in enriched_orders {
-            orders.push(order);
+            // Drop the permit when done
+            drop(permit);
+
+            Ok::<Vec<Order>, Box<dyn std::error::Error + Send + Sync>>(enriched_orders)
+        }));
+    }
+
+    // Collect results as they finish
+    while let Some(result) = tasks.next().await {
+        match result {
+            Ok(Ok(mut enriched_orders)) => {
+                orders.append(&mut enriched_orders);
+            }
+            Ok(Err(err)) => {
+                eprintln!("Error fetching orders: {}", err);
+            }
+            Err(err) => {
+                eprintln!("Task failed: {}", err);
+            }
         }
     }
 
