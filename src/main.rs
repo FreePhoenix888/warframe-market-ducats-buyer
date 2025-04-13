@@ -158,11 +158,10 @@ impl eframe::App for MyApp {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.with_layout(Layout::top_down_justified(Align::Center), |ui| {
-                ui.heading("My egui Application with Async Orders");
-                ui.add_space(20.0);
+                ui.vertical_centered(|ui| {
+                    ui.heading("My egui Application with Async Orders");
+                    ui.add_space(20.0);
 
-                // Input fields section
-                egui::Grid::new("input_grid").num_columns(3).show(ui, |ui| {
                     ui.label("Max Price:");
                     if let Ok(mut value) = self.user_inputs.max_price_to_search.parse::<u32>() {
                         if ui
@@ -207,21 +206,20 @@ impl eframe::App for MyApp {
                         }
                     }
                     ui.end_row();
-                });
 
-                ui.add_space(10.0);
 
-                ui.label("Item Names (one per line):");
-                ui.add(
-                    TextEdit::multiline(&mut self.user_inputs.item_names)
-                        .hint_text("Enter item names (one per line)")
-                        .desired_width(f32::INFINITY)
-                        .min_size([ui.available_width(), 100.0].into()),
-                );
+                    ui.add_space(10.0);
 
-                ui.add_space(10.0);
+                    ui.label("Item Names (one per line):");
+                    ui.add(
+                        TextEdit::multiline(&mut self.user_inputs.item_names)
+                            .hint_text("Enter item names (one per line)")
+                            .desired_width(f32::INFINITY)
+                            .min_size([ui.available_width(), 100.0].into()),
+                    );
 
-                ui.vertical_centered(|ui| {
+                    ui.add_space(10.0);
+
                     if ui.button("Reset to Defaults").clicked() {
                         self.user_inputs = self.default_inputs.clone();
                     }
