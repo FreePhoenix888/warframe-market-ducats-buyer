@@ -8,8 +8,8 @@ use eframe::egui;
 use eframe::egui::{
     Align, Button, DragValue, Frame, Layout, Rounding, ScrollArea, Spinner, Stroke, TextEdit,
 };
-use std::sync::mpsc::{self, TryRecvError};
 use log::{debug, error, info, warn};
+use std::sync::mpsc::{self, TryRecvError};
 
 fn main() -> eframe::Result {
     if std::env::var("RUST_LOG").is_err() {
@@ -179,36 +179,33 @@ impl eframe::App for MyApp {
                     ui.add_space(20.0);
 
                     let is_enabled_button_fetch_orders = !self.loading_fetch;
-                    ui.add_enabled_ui(
-                        is_enabled_button_fetch_orders,
-                        |ui| {
-                            if ui
-                                .add_sized([150.0, 30.0], Button::new("Fetch Orders"))
-                                .clicked()
-                            {
-                                info!("Starting to fetch orders...");
-                                self.loading_fetch = true;
-                                let tx = self.tx_fetch.clone();
+                    ui.add_enabled_ui(is_enabled_button_fetch_orders, |ui| {
+                        if ui
+                            .add_sized([150.0, 30.0], Button::new("Fetch Orders"))
+                            .clicked()
+                        {
+                            info!("Starting to fetch orders...");
+                            self.loading_fetch = true;
+                            let tx = self.tx_fetch.clone();
 
-                                std::thread::spawn(move || {
-                                    let rt = tokio::runtime::Runtime::new().unwrap();
-                                    let result = rt.block_on(async {
-                                        match lib::fetch_all_orders(&item_names).await {
-                                            Ok(orders) => {
-                                                info!("Successfully fetched orders.");
-                                                Ok(orders)
-                                            },
-                                            Err(e) => {
-                                                error!("Failed to fetch orders: {:?}", e);
-                                                Err(format!("{:?}", e))
-                                            },
+                            std::thread::spawn(move || {
+                                let rt = tokio::runtime::Runtime::new().unwrap();
+                                let result = rt.block_on(async {
+                                    match lib::fetch_all_orders(&item_names).await {
+                                        Ok(orders) => {
+                                            info!("Successfully fetched orders.");
+                                            Ok(orders)
                                         }
-                                    });
-                                    let _ = tx.send(result);
+                                        Err(e) => {
+                                            error!("Failed to fetch orders: {:?}", e);
+                                            Err(format!("{:?}", e))
+                                        }
+                                    }
                                 });
-                            }
+                                let _ = tx.send(result);
+                            });
                         }
-                    );
+                    });
 
                     let orders_len = self.orders.as_ref().map_or(0, |orders| orders.len());
                     ui.label(format!("Orders length: {}", orders_len));
@@ -217,41 +214,38 @@ impl eframe::App for MyApp {
                         self.show_all_orders = !self.show_all_orders;
                     }
 
+                    let is_enabled_button_process_orders = !self.loading_process && orders_len > 0;
+                    ui.add_enabled_ui(is_enabled_button_process_orders, |ui| {
+                        if ui
+                            .add_sized([150.0, 30.0], Button::new("Filter & Process Orders"))
+                            .clicked()
+                        {
+                            self.loading_process = true;
+                            let tx = self.tx_process.clone();
+                            let orders = self.orders.clone();
 
-                    let is_enabled_button_process_orders = !self.loading_process
-                        && orders_len > 0;
-                    ui.add_enabled_ui(
-                        is_enabled_button_process_orders,
-                        |ui| {
-                            if ui
-                                .add_sized([150.0, 30.0], Button::new("Filter & Process Orders"))
-                                .clicked()
-                                {
-                                    self.loading_process = true;
-                                    let tx = self.tx_process.clone();
-                                    let orders = self.orders.clone();
+                            std::thread::spawn(move || {
+                                let filter_orders = |order: &lib::Order| -> bool {
+                                    order.user.status == "ingame"
+                                        && order.visible
+                                        && order.order_type == "sell"
+                                        && order.platinum <= max_price
+                                        && order.quantity >= min_quantity
+                                };
 
-                                    std::thread::spawn(move || {
-                                        let filter_orders = |order: &lib::Order| -> bool {
-                                            order.user.status == "ingame"
-                                                && order.visible
-                                                && order.order_type == "sell"
-                                                && order.platinum <= max_price
-                                                && order.quantity >= min_quantity
-                                        };
-
-                                        let processed_orders = orders
-                                            .map(|o| lib::process_orders(o, filter_orders))
-                                            .unwrap_or_else(Vec::new);
-                                        let _ = tx.send(Ok(processed_orders));
-                                    });
-                                }
-
+                                let processed_orders = orders
+                                    .map(|o| lib::process_orders(o, filter_orders))
+                                    .unwrap_or_else(Vec::new);
+                                let _ = tx.send(Ok(processed_orders));
+                            });
                         }
-                    );
+                    });
                 });
 
-                let processed_orders_len = self.processed_orders.as_ref().map_or(0, |orders| orders.len());
+                let processed_orders_len = self
+                    .processed_orders
+                    .as_ref()
+                    .map_or(0, |orders| orders.len());
                 ui.label(format!("Processed orders length: {}", processed_orders_len));
 
                 ui.add_space(20.0);
@@ -319,11 +313,7 @@ impl eframe::App for MyApp {
                     ui.label("Max Price:");
                     if let Ok(mut value) = self.user_inputs.max_price_to_search.parse::<u32>() {
                         if ui
-                            .add(
-                                DragValue::new(&mut value)
-                                    .clamp_range(0..=10)
-                                    .speed(0.02),
-                            )
+                            .add(DragValue::new(&mut value).clamp_range(0..=10).speed(0.02))
                             .changed()
                         {
                             self.user_inputs.max_price_to_search = value.to_string();
@@ -334,11 +324,7 @@ impl eframe::App for MyApp {
                     ui.label("Min Quantity:");
                     if let Ok(mut value) = self.user_inputs.min_quantity_to_search.parse::<u32>() {
                         if ui
-                            .add(
-                                DragValue::new(&mut value)
-                                    .clamp_range(0..=10)
-                                    .speed(0.02),
-                            )
+                            .add(DragValue::new(&mut value).clamp_range(0..=10).speed(0.02))
                             .changed()
                         {
                             self.user_inputs.min_quantity_to_search = value.to_string();
@@ -349,11 +335,7 @@ impl eframe::App for MyApp {
                     ui.label("Offer Price:");
                     if let Ok(mut value) = self.user_inputs.price_to_offer.parse::<u32>() {
                         if ui
-                            .add(
-                                DragValue::new(&mut value)
-                                    .clamp_range(0..=10)
-                                    .speed(0.02),
-                            )
+                            .add(DragValue::new(&mut value).clamp_range(0..=10).speed(0.02))
                             .changed()
                         {
                             self.user_inputs.price_to_offer = value.to_string();
@@ -390,7 +372,10 @@ impl eframe::App for MyApp {
                     ui.add_space(10.0);
                     ui.label("Made by:");
                     ui.hyperlink_to("FreePhoenix888", "https://github.com/FreePhoenix888");
-                    ui.hyperlink_to("Source Code", "https://github.com/FreePhoenix888/warframe-market-ducats-buyer");
+                    ui.hyperlink_to(
+                        "Source Code",
+                        "https://github.com/FreePhoenix888/warframe-market-ducats-buyer",
+                    );
                     ui.add_space(10.0);
                     ui.label("Special thanks to the Warframe community!");
                 });
@@ -425,7 +410,9 @@ impl eframe::App for MyApp {
 
                                         ui.horizontal(|ui| {
                                             ui.label("Item:");
-                                            ui.monospace(order.item_name.as_deref().unwrap_or("Unknown"));
+                                            ui.monospace(
+                                                order.item_name.as_deref().unwrap_or("Unknown"),
+                                            );
                                             if let Some(item_url) = &order.item_url {
                                                 ui.hyperlink(format!(
                                                     "https://warframe.market/items/{}",
