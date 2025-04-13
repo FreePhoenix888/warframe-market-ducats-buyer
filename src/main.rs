@@ -10,6 +10,7 @@ use eframe::egui::{
 };
 use log::{debug, error, info, warn};
 use std::sync::mpsc::{self, TryRecvError};
+use serde::{Deserialize, Serialize};
 
 fn main() -> eframe::Result {
     if std::env::var("RUST_LOG").is_err() {
@@ -30,12 +31,33 @@ fn main() -> eframe::Result {
     )
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 struct UserInputs {
     max_price_to_search: String,
     min_quantity_to_search: String,
     price_to_offer: String,
     item_names: String,
+}
+
+impl UserInputs {
+    const SETTINGS_FILE: &'static str = "settings.json"; // File to store settings
+
+    // Load settings from the file
+    pub fn load() -> Self {
+        if let Ok(file) = std::fs::File::open(Self::SETTINGS_FILE) {
+            if let Ok(settings) = serde_json::from_reader(file) {
+                return settings;
+            }
+        }
+        Self::default() // Return default settings if loading fails
+    }
+
+    // Save settings to the file
+    pub fn save(&self) {
+        if let Ok(file) = std::fs::File::create(Self::SETTINGS_FILE) {
+            let _ = serde_json::to_writer_pretty(file, self);
+        }
+    }
 }
 
 struct MyApp {
@@ -48,7 +70,6 @@ struct MyApp {
     loading_fetch: bool,
     loading_process: bool,
     user_inputs: UserInputs,
-    default_inputs: UserInputs,
     error_message: Option<String>,
     show_settings: bool,
     show_credits: bool,
@@ -70,7 +91,7 @@ impl Default for MyApp {
     fn default() -> Self {
         let (tx_fetch, rx_fetch) = mpsc::channel();
         let (tx_process, rx_process) = mpsc::channel();
-        let default_inputs = UserInputs::default();
+        let user_inputs = UserInputs::load();
         Self {
             rx_fetch,
             tx_fetch,
@@ -80,8 +101,7 @@ impl Default for MyApp {
             processed_orders: None,
             loading_fetch: false,
             loading_process: false,
-            user_inputs: default_inputs.clone(),
-            default_inputs,
+            user_inputs: user_inputs,
             error_message: None,
             show_settings: true,
             show_credits: false,
@@ -310,6 +330,14 @@ impl eframe::App for MyApp {
                 .open(&mut self.show_settings)
                 .resizable(true)
                 .show(ctx, |ui| {
+                    if ui.button("Reset Settings to Defaults").clicked() {
+                        self.user_inputs = UserInputs::default();
+                    }
+
+                    if ui.button("Save Settings").clicked() {
+                        self.user_inputs.save();
+                    }
+
                     ui.label("Max Price:");
                     if let Ok(mut value) = self.user_inputs.max_price_to_search.parse::<u32>() {
                         if ui
@@ -354,10 +382,6 @@ impl eframe::App for MyApp {
                     );
 
                     ui.add_space(10.0);
-
-                    if ui.button("Reset to Defaults").clicked() {
-                        self.user_inputs = self.default_inputs.clone();
-                    }
                 });
         }
 
