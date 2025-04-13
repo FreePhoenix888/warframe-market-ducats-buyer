@@ -50,6 +50,7 @@ struct MyApp {
     user_inputs: UserInputs,
     default_inputs: UserInputs,
     error_message: Option<String>,
+    show_settings: bool, // New field to toggle settings visibility
 }
 
 impl Default for UserInputs {
@@ -80,6 +81,7 @@ impl Default for MyApp {
             user_inputs: default_inputs.clone(),
             default_inputs,
             error_message: None,
+            show_settings: false, // Initialize settings as hidden
         }
     }
 }
@@ -103,9 +105,7 @@ impl eframe::App for MyApp {
                 }
                 self.loading_fetch = false;
             }
-            Err(TryRecvError::Empty) => {
-
-            }
+            Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected) => {
                 warn!("Fetch channel disconnected.");
                 self.loading_fetch = false;
@@ -162,66 +162,75 @@ impl eframe::App for MyApp {
                     ui.heading("My egui Application with Async Orders");
                     ui.add_space(20.0);
 
-                    ui.label("Max Price:");
-                    if let Ok(mut value) = self.user_inputs.max_price_to_search.parse::<u32>() {
-                        if ui
-                            .add(
-                                DragValue::new(&mut value)
-                                    .clamp_range(0..=10)
-                                    .speed(0.02),
-                            )
-                            .changed()
-                        {
-                            self.user_inputs.max_price_to_search = value.to_string();
-                        }
+                    if ui.button("Settings").clicked() {
+                        self.show_settings = !self.show_settings;
                     }
-                    ui.end_row();
 
-                    ui.label("Min Quantity:");
-                    if let Ok(mut value) = self.user_inputs.min_quantity_to_search.parse::<u32>() {
-                        if ui
-                            .add(
-                                DragValue::new(&mut value)
-                                    .clamp_range(0..=10)
-                                    .speed(0.02),
-                            )
-                            .changed()
-                        {
-                            self.user_inputs.min_quantity_to_search = value.to_string();
+                    if self.show_settings {
+                        ui.add_space(10.0);
+
+                        ui.label("Max Price:");
+                        if let Ok(mut value) = self.user_inputs.max_price_to_search.parse::<u32>() {
+                            if ui
+                                .add(
+                                    DragValue::new(&mut value)
+                                        .clamp_range(0..=10)
+                                        .speed(0.02),
+                                )
+                                .changed()
+                            {
+                                self.user_inputs.max_price_to_search = value.to_string();
+                            }
                         }
-                    }
-                    ui.end_row();
+                        ui.end_row();
 
-                    ui.label("Offer Price:");
-                    if let Ok(mut value) = self.user_inputs.price_to_offer.parse::<u32>() {
-                        if ui
-                            .add(
-                                DragValue::new(&mut value)
-                                    .clamp_range(0..=10)
-                                    .speed(0.02),
-                            )
-                            .changed()
-                        {
-                            self.user_inputs.price_to_offer = value.to_string();
+                        ui.label("Min Quantity:");
+                        if let Ok(mut value) = self.user_inputs.min_quantity_to_search.parse::<u32>() {
+                            if ui
+                                .add(
+                                    DragValue::new(&mut value)
+                                        .clamp_range(0..=10)
+                                        .speed(0.02),
+                                )
+                                .changed()
+                            {
+                                self.user_inputs.min_quantity_to_search = value.to_string();
+                            }
                         }
-                    }
-                    ui.end_row();
+                        ui.end_row();
 
+                        ui.label("Offer Price:");
+                        if let Ok(mut value) = self.user_inputs.price_to_offer.parse::<u32>() {
+                            if ui
+                                .add(
+                                    DragValue::new(&mut value)
+                                        .clamp_range(0..=10)
+                                        .speed(0.02),
+                                )
+                                .changed()
+                            {
+                                self.user_inputs.price_to_offer = value.to_string();
+                            }
+                        }
+                        ui.end_row();
 
-                    ui.add_space(10.0);
+                        ui.add_space(10.0);
 
-                    ui.label("Item Names (one per line):");
-                    ui.add(
-                        TextEdit::multiline(&mut self.user_inputs.item_names)
-                            .hint_text("Enter item names (one per line)")
-                            .desired_width(f32::INFINITY)
-                            .min_size([ui.available_width(), 100.0].into()),
-                    );
+                        ui.label("Item Names (one per line):");
+                        ui.add(
+                            TextEdit::multiline(&mut self.user_inputs.item_names)
+                                .hint_text("Enter item names (one per line)")
+                                .desired_width(f32::INFINITY)
+                                .min_size([ui.available_width(), 100.0].into()),
+                        );
 
-                    ui.add_space(10.0);
+                        ui.add_space(10.0);
 
-                    if ui.button("Reset to Defaults").clicked() {
-                        self.user_inputs = self.default_inputs.clone();
+                        if ui.button("Reset to Defaults").clicked() {
+                            self.user_inputs = self.default_inputs.clone();
+                        }
+
+                        ui.add_space(10.0);
                     }
 
                     if ui
