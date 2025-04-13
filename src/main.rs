@@ -6,9 +6,10 @@ mod lib;
 
 use eframe::egui;
 use eframe::egui::{
-    Align, Button, DragValue, Frame, Layout, Rounding, ScrollArea, Spinner,
-    Stroke, TextEdit,
+  Align, Button, DragValue, Frame, Layout, Rounding, ScrollArea, Spinner,
+  Stroke, TextEdit,
 };
+use egui_notify::Toasts;
 use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::sync::mpsc::{self, TryRecvError};
@@ -71,7 +72,7 @@ struct MyApp {
   loading_fetch: bool,
   loading_process: bool,
   user_inputs: UserInputs,
-  error_message: Option<String>,
+  toasts: Toasts,
   show_settings: bool,
   show_credits: bool,
   show_all_orders: bool,
@@ -103,7 +104,7 @@ impl Default for MyApp {
       loading_fetch: false,
       loading_process: false,
       user_inputs: user_inputs,
-      error_message: None,
+      toasts: Toasts::new(),
       show_settings: true,
       show_credits: false,
       show_all_orders: false,
@@ -118,13 +119,14 @@ impl eframe::App for MyApp {
       Ok(result) => {
         match result {
           Ok(data) => {
-            info!("Successfully received fetched data. len {:?}", data.len());
+            let message = format!("Successfully received fetched {:?} orders", data.len());
+            info!("{}", message);
             self.orders = Some(data);
-            self.error_message = None;
+            self.toasts.success(message);
           }
           Err(err) => {
             error!("Error fetching orders: {}", err);
-            self.error_message = Some(err);
+            self.toasts.error(format!("Error fetching orders: {}", err));
             self.orders = None;
           }
         }
@@ -134,6 +136,7 @@ impl eframe::App for MyApp {
       Err(TryRecvError::Disconnected) => {
         warn!("Fetch channel disconnected.");
         self.loading_fetch = false;
+        self.toasts.warning("Fetch channel disconnected.");
       }
     }
 
@@ -143,10 +146,10 @@ impl eframe::App for MyApp {
         match result {
           Ok(data) => {
             self.processed_orders = Some(data);
-            self.error_message = None;
+            self.toasts.success("Successfully processed orders.");
           }
           Err(err) => {
-            self.error_message = Some(err);
+            self.toasts.error(format!("Error processing orders: {}", err));
             self.processed_orders = None;
           }
         }
@@ -155,29 +158,38 @@ impl eframe::App for MyApp {
       Err(TryRecvError::Empty) => {}
       Err(TryRecvError::Disconnected) => {
         self.loading_process = false;
+        self.toasts.warning("Process channel disconnected.");
       }
     }
 
     let max_price =
-      self.user_inputs.max_price_to_search.parse::<u32>().unwrap_or_default();
+        self.user_inputs.max_price_to_search.parse::<u32>().unwrap_or_default();
     let min_quantity = self
-      .user_inputs
-      .min_quantity_to_search
-      .parse::<u32>()
-      .unwrap_or_default();
+        .user_inputs
+        .min_quantity_to_search
+        .parse::<u32>()
+        .unwrap_or_default();
     let offer_price =
-      self.user_inputs.price_to_offer.parse::<u32>().unwrap_or_default();
+        self.user_inputs.price_to_offer.parse::<u32>().unwrap_or_default();
     let item_names: Vec<String> = self
-      .user_inputs
-      .item_names
-      .lines()
-      .map(|s| s.trim().to_string())
-      .filter(|s| !s.is_empty())
-      .collect();
+        .user_inputs
+        .item_names
+        .lines()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
 
     egui::CentralPanel::default().show(ctx, |ui| {
       ui.with_layout(Layout::top_down_justified(Align::Center), |ui| {
         ui.vertical_centered(|ui| {
+
+          #[cfg(feature = "debug_ui")]
+          {
+            if ui.button("Test Toast Notifications").clicked(){
+              self.toasts.success("Successfully fetched orders.");
+            }
+          }
+
           ui.heading("Warframe Market Ducats Buyer");
           ui.add_space(20.0);
 
@@ -196,8 +208,8 @@ impl eframe::App for MyApp {
           let is_enabled_button_fetch_orders = !self.loading_fetch;
           ui.add_enabled_ui(is_enabled_button_fetch_orders, |ui| {
             if ui
-              .add_sized([150.0, 30.0], Button::new("Fetch Orders"))
-              .clicked()
+                .add_sized([150.0, 30.0], Button::new("Fetch Orders"))
+                .clicked()
             {
               info!("Starting to fetch orders...");
               self.loading_fetch = true;
@@ -223,7 +235,7 @@ impl eframe::App for MyApp {
           });
 
           let orders_len =
-            self.orders.as_ref().map_or(0, |orders| orders.len());
+              self.orders.as_ref().map_or(0, |orders| orders.len());
           ui.label(format!("Orders length: {}", orders_len));
 
           if ui.button("Show All Orders").clicked() {
@@ -231,11 +243,11 @@ impl eframe::App for MyApp {
           }
 
           let is_enabled_button_process_orders =
-            !self.loading_process && orders_len > 0;
+              !self.loading_process && orders_len > 0;
           ui.add_enabled_ui(is_enabled_button_process_orders, |ui| {
             if ui
-              .add_sized([150.0, 30.0], Button::new("Filter & Process Orders"))
-              .clicked()
+                .add_sized([150.0, 30.0], Button::new("Filter & Process Orders"))
+                .clicked()
             {
               self.loading_process = true;
               let tx = self.tx_process.clone();
@@ -244,15 +256,15 @@ impl eframe::App for MyApp {
               std::thread::spawn(move || {
                 let filter_orders = |order: &lib::Order| -> bool {
                   order.user.status == "ingame"
-                    && order.visible
-                    && order.order_type == "sell"
-                    && order.platinum <= max_price
-                    && order.quantity >= min_quantity
+                      && order.visible
+                      && order.order_type == "sell"
+                      && order.platinum <= max_price
+                      && order.quantity >= min_quantity
                 };
 
                 let processed_orders = orders
-                  .map(|o| lib::process_orders(o, filter_orders))
-                  .unwrap_or_else(Vec::new);
+                    .map(|o| lib::process_orders(o, filter_orders))
+                    .unwrap_or_else(Vec::new);
                 let _ = tx.send(Ok(processed_orders));
               });
             }
@@ -260,7 +272,7 @@ impl eframe::App for MyApp {
         });
 
         let processed_orders_len =
-          self.processed_orders.as_ref().map_or(0, |orders| orders.len());
+            self.processed_orders.as_ref().map_or(0, |orders| orders.len());
         ui.label(format!("Processed orders length: {}", processed_orders_len));
 
         ui.add_space(20.0);
@@ -284,192 +296,190 @@ impl eframe::App for MyApp {
               let message = lib::generate_message(order, offer_price);
 
               Frame::none()
-                .stroke(frame_stroke)
-                .rounding(Rounding::same(5)) // Optional: rounded corners
-                .show(ui, |ui| {
-                  let button =
-                    ui.add_sized([100.0, 100.0], Button::new(message.clone()));
-                  if button.clicked() {
-                    ui.ctx().copy_text(message.clone());
-                  }
-                });
+                  .stroke(frame_stroke)
+                  .rounding(Rounding::same(5)) // Optional: rounded corners
+                  .show(ui, |ui| {
+                    let button =
+                        ui.add_sized([100.0, 100.0], Button::new(message.clone()));
+                    if button.clicked() {
+                      ui.ctx().copy_text(message.clone());
+                    }
+                  });
 
               ui.add_space(8.0);
             }
           });
-        }
-
-        if let Some(error_message) = &self.error_message {
-          ui.colored_label(ui.visuals().warn_fg_color, error_message);
         }
       });
     });
 
     if self.show_settings {
       egui::Window::new("Settings")
-        .open(&mut self.show_settings)
-        .resizable(true)
-        .show(ctx, |ui| {
-          if ui.button("Reset Settings to Defaults").clicked() {
-            self.user_inputs = UserInputs::default();
-          }
-
-          if ui.button("Save Settings").clicked() {
-            self.user_inputs.save();
-          }
-
-          ui.label("Max Price:");
-          if let Ok(mut value) =
-            self.user_inputs.max_price_to_search.parse::<u32>()
-          {
-            if ui
-              .add(DragValue::new(&mut value).clamp_range(0..=10).speed(0.02))
-              .changed()
-            {
-              self.user_inputs.max_price_to_search = value.to_string();
+          .open(&mut self.show_settings)
+          .resizable(true)
+          .show(ctx, |ui| {
+            if ui.button("Reset Settings to Defaults").clicked() {
+              self.user_inputs = UserInputs::default();
             }
-          }
-          ui.end_row();
 
-          ui.label("Min Quantity:");
-          if let Ok(mut value) =
-            self.user_inputs.min_quantity_to_search.parse::<u32>()
-          {
-            if ui
-              .add(DragValue::new(&mut value).clamp_range(0..=10).speed(0.02))
-              .changed()
-            {
-              self.user_inputs.min_quantity_to_search = value.to_string();
+            if ui.button("Save Settings").clicked() {
+              self.user_inputs.save();
             }
-          }
-          ui.end_row();
 
-          ui.label("Offer Price:");
-          if let Ok(mut value) = self.user_inputs.price_to_offer.parse::<u32>()
-          {
-            if ui
-              .add(DragValue::new(&mut value).clamp_range(0..=10).speed(0.02))
-              .changed()
+            ui.label("Max Price:");
+            if let Ok(mut value) =
+                self.user_inputs.max_price_to_search.parse::<u32>()
             {
-              self.user_inputs.price_to_offer = value.to_string();
+              if ui
+                  .add(DragValue::new(&mut value).clamp_range(0..=10).speed(0.02))
+                  .changed()
+              {
+                self.user_inputs.max_price_to_search = value.to_string();
+              }
             }
-          }
-          ui.end_row();
+            ui.end_row();
 
-          ui.add_space(10.0);
+            ui.label("Min Quantity:");
+            if let Ok(mut value) =
+                self.user_inputs.min_quantity_to_search.parse::<u32>()
+            {
+              if ui
+                  .add(DragValue::new(&mut value).clamp_range(0..=10).speed(0.02))
+                  .changed()
+              {
+                self.user_inputs.min_quantity_to_search = value.to_string();
+              }
+            }
+            ui.end_row();
 
-          ui.label("Item Names (one per line):");
-          ui.add(
-            TextEdit::multiline(&mut self.user_inputs.item_names)
-              .hint_text("Enter item names (one per line)")
-              .desired_width(f32::INFINITY)
-              .min_size([ui.available_width(), 100.0].into()),
-          );
+            ui.label("Offer Price:");
+            if let Ok(mut value) = self.user_inputs.price_to_offer.parse::<u32>()
+            {
+              if ui
+                  .add(DragValue::new(&mut value).clamp_range(0..=10).speed(0.02))
+                  .changed()
+              {
+                self.user_inputs.price_to_offer = value.to_string();
+              }
+            }
+            ui.end_row();
 
-          ui.add_space(10.0);
-        });
+            ui.add_space(10.0);
+
+            ui.label("Item Names (one per line):");
+            ui.add(
+              TextEdit::multiline(&mut self.user_inputs.item_names)
+                  .hint_text("Enter item names (one per line)")
+                  .desired_width(f32::INFINITY)
+                  .min_size([ui.available_width(), 100.0].into()),
+            );
+
+            ui.add_space(10.0);
+          });
     }
 
     if self.show_credits {
       egui::Window::new("Credits")
-        .open(&mut self.show_credits)
-        .resizable(true)
-        .show(ctx, |ui| {
-          ui.label("Warframe Market Ducats Buyer");
-          ui.label("This app works thanks to:");
-          ui.hyperlink("https://warframe.market/");
-          ui.add_space(10.0);
-          ui.label("Made by:");
-          ui.hyperlink_to(
-            "FreePhoenix888",
-            "https://github.com/FreePhoenix888",
-          );
-          ui.hyperlink_to(
-            "Source Code",
-            "https://github.com/FreePhoenix888/warframe-market-ducats-buyer",
-          );
-          ui.add_space(10.0);
-          ui.label("Special thanks to the Warframe community!");
-        });
+          .open(&mut self.show_credits)
+          .resizable(true)
+          .show(ctx, |ui| {
+            ui.label("Warframe Market Ducats Buyer");
+            ui.label("This app works thanks to:");
+            ui.hyperlink("https://warframe.market/");
+            ui.add_space(10.0);
+            ui.label("Made by:");
+            ui.hyperlink_to(
+              "FreePhoenix888",
+              "https://github.com/FreePhoenix888",
+            );
+            ui.hyperlink_to(
+              "Source Code",
+              "https://github.com/FreePhoenix888/warframe-market-ducats-buyer",
+            );
+            ui.add_space(10.0);
+            ui.label("Special thanks to the Warframe community!");
+          });
     }
 
     if self.show_all_orders {
       egui::Window::new("All Orders")
-        .open(&mut self.show_all_orders)
-        .resizable(true)
-        .scroll2([true, true]) // Enable scrolling
-        .show(ctx, |ui| {
-          if let Some(orders) = &self.orders {
-            ui.label("Fetched Orders:");
-            ui.add_space(10.0);
+          .open(&mut self.show_all_orders)
+          .resizable(true)
+          .scroll2([true, true]) // Enable scrolling
+          .show(ctx, |ui| {
+            if let Some(orders) = &self.orders {
+              ui.label("Fetched Orders:");
+              ui.add_space(10.0);
 
-            // Virtual scrolling for better performance
-            let row_height = 50.0; // Approximate height of each order row
-            let num_rows = orders.len();
+              // Virtual scrolling for better performance
+              let row_height = 50.0; // Approximate height of each order row
+              let num_rows = orders.len();
 
-            ScrollArea::vertical().auto_shrink([false, false]).show_rows(
-              ui,
-              row_height,
-              num_rows,
-              |ui, range| {
-                for i in range.start..range.end {
-                  let order = &orders[i];
+              ScrollArea::vertical().auto_shrink([false, false]).show_rows(
+                ui,
+                row_height,
+                num_rows,
+                |ui, range| {
+                  for i in range.start..range.end {
+                    let order = &orders[i];
 
-                  // Render each order in a simplified card
-                  ui.group(|ui| {
-                    ui.horizontal(|ui| {
-                      ui.label("ID:");
-                      ui.monospace(&order.id);
+                    // Render each order in a simplified card
+                    ui.group(|ui| {
+                      ui.horizontal(|ui| {
+                        ui.label("ID:");
+                        ui.monospace(&order.id);
+                      });
+
+                      ui.horizontal(|ui| {
+                        ui.label("Item:");
+                        ui.monospace(
+                          order.item_name.as_deref().unwrap_or("Unknown"),
+                        );
+                        if let Some(item_url) = &order.item_url {
+                          ui.hyperlink(format!(
+                            "https://warframe.market/items/{}",
+                            item_url
+                          ));
+                        }
+                      });
+
+                      ui.horizontal(|ui| {
+                        ui.label("Price:");
+                        ui.monospace(format!("{} platinum", order.platinum));
+                      });
+
+                      ui.horizontal(|ui| {
+                        ui.label("Quantity:");
+                        ui.monospace(order.quantity.to_string());
+                      });
+
+                      ui.horizontal(|ui| {
+                        ui.label("User:");
+                        ui.monospace(&order.user.ingame_name);
+                        ui.label("(Status:");
+                        ui.colored_label(
+                          if order.user.status == "ingame" {
+                            egui::Color32::GREEN
+                          } else {
+                            egui::Color32::RED
+                          },
+                          &order.user.status,
+                        );
+                        ui.label(")");
+                      });
+
+                      ui.separator();
                     });
-
-                    ui.horizontal(|ui| {
-                      ui.label("Item:");
-                      ui.monospace(
-                        order.item_name.as_deref().unwrap_or("Unknown"),
-                      );
-                      if let Some(item_url) = &order.item_url {
-                        ui.hyperlink(format!(
-                          "https://warframe.market/items/{}",
-                          item_url
-                        ));
-                      }
-                    });
-
-                    ui.horizontal(|ui| {
-                      ui.label("Price:");
-                      ui.monospace(format!("{} platinum", order.platinum));
-                    });
-
-                    ui.horizontal(|ui| {
-                      ui.label("Quantity:");
-                      ui.monospace(order.quantity.to_string());
-                    });
-
-                    ui.horizontal(|ui| {
-                      ui.label("User:");
-                      ui.monospace(&order.user.ingame_name);
-                      ui.label("(Status:");
-                      ui.colored_label(
-                        if order.user.status == "ingame" {
-                          egui::Color32::GREEN
-                        } else {
-                          egui::Color32::RED
-                        },
-                        &order.user.status,
-                      );
-                      ui.label(")");
-                    });
-
-                    ui.separator();
-                  });
-                }
-              },
-            );
-          } else {
-            ui.label("No orders fetched yet.");
-          }
-        });
+                  }
+                },
+              );
+            } else {
+              ui.label("No orders fetched yet.");
+            }
+          });
     }
+
+    self.toasts.show(ctx);
     ctx.request_repaint();
   }
 }
