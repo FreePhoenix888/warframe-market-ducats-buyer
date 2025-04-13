@@ -159,68 +159,82 @@ impl eframe::App for MyApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.with_layout(Layout::top_down_justified(Align::Center), |ui| {
                 ui.vertical_centered(|ui| {
-                    ui.heading("My egui Application with Async Orders");
+                    ui.heading("Warframe Market Ducats Buyer");
                     ui.add_space(20.0);
 
                     if ui.button("Settings").clicked() {
                         self.show_settings = !self.show_settings;
                     }
 
-                    if ui
-                        .add_sized([150.0, 30.0], Button::new("Fetch Orders"))
-                        .clicked()
-                        && !self.loading_fetch
-                    {
-                        info!("Starting to fetch orders...");
-                        self.loading_fetch = true;
-                        let tx = self.tx_fetch.clone();
+                    ui.add_space(20.0);
 
-                        std::thread::spawn(move || {
-                            let rt = tokio::runtime::Runtime::new().unwrap();
-                            let result = rt.block_on(async {
-                                match lib::fetch_all_orders(&item_names).await {
-                                    Ok(orders) => {
-                                        info!("Successfully fetched orders.");
-                                        Ok(orders)
-                                    },
-                                    Err(e) => {
-                                        error!("Failed to fetch orders: {:?}", e);
-                                        Err(format!("{:?}", e))
-                                    },
-                                }
-                            });
-                            let _ = tx.send(result);
-                        });
-                    }
+                    let is_enabled_button_fetch_orders = !self.loading_fetch;
+                    ui.add_enabled_ui(
+                        is_enabled_button_fetch_orders,
+                        |ui| {
+                            if ui
+                                .add_sized([150.0, 30.0], Button::new("Fetch Orders"))
+                                .clicked()
+                            {
+                                info!("Starting to fetch orders...");
+                                self.loading_fetch = true;
+                                let tx = self.tx_fetch.clone();
+
+                                std::thread::spawn(move || {
+                                    let rt = tokio::runtime::Runtime::new().unwrap();
+                                    let result = rt.block_on(async {
+                                        match lib::fetch_all_orders(&item_names).await {
+                                            Ok(orders) => {
+                                                info!("Successfully fetched orders.");
+                                                Ok(orders)
+                                            },
+                                            Err(e) => {
+                                                error!("Failed to fetch orders: {:?}", e);
+                                                Err(format!("{:?}", e))
+                                            },
+                                        }
+                                    });
+                                    let _ = tx.send(result);
+                                });
+                            }
+                        }
+                    );
 
                     let orders_len = self.orders.as_ref().map_or(0, |orders| orders.len());
                     ui.label(format!("Orders length: {}", orders_len));
 
-                    if ui
-                        .add_sized([150.0, 30.0], Button::new("Filter & Process Orders"))
-                        .clicked()
-                        && !self.loading_process
-                        && orders_len > 0
-                    {
-                        self.loading_process = true;
-                        let tx = self.tx_process.clone();
-                        let orders = self.orders.clone();
 
-                        std::thread::spawn(move || {
-                            let filter_orders = |order: &lib::Order| -> bool {
-                                order.user.status == "ingame"
-                                    && order.visible
-                                    && order.order_type == "sell"
-                                    && order.platinum <= max_price
-                                    && order.quantity >= min_quantity
-                            };
+                    let is_enabled_button_process_orders = !self.loading_process
+                        && orders_len > 0;
+                    ui.add_enabled_ui(
+                        is_enabled_button_process_orders,
+                        |ui| {
+                            if ui
+                                .add_sized([150.0, 30.0], Button::new("Filter & Process Orders"))
+                                .clicked()
+                                {
+                                    self.loading_process = true;
+                                    let tx = self.tx_process.clone();
+                                    let orders = self.orders.clone();
 
-                            let processed_orders = orders
-                                .map(|o| lib::process_orders(o, filter_orders))
-                                .unwrap_or_else(Vec::new);
-                            let _ = tx.send(Ok(processed_orders));
-                        });
-                    }
+                                    std::thread::spawn(move || {
+                                        let filter_orders = |order: &lib::Order| -> bool {
+                                            order.user.status == "ingame"
+                                                && order.visible
+                                                && order.order_type == "sell"
+                                                && order.platinum <= max_price
+                                                && order.quantity >= min_quantity
+                                        };
+
+                                        let processed_orders = orders
+                                            .map(|o| lib::process_orders(o, filter_orders))
+                                            .unwrap_or_else(Vec::new);
+                                        let _ = tx.send(Ok(processed_orders));
+                                    });
+                                }
+
+                        }
+                    );
                 });
 
                 let processed_orders_len = self.processed_orders.as_ref().map_or(0, |orders| orders.len());
