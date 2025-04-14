@@ -239,6 +239,7 @@ impl eframe::App for MyApp {
                 Stroke::new(1.0, ui.visuals().extreme_bg_color)
               };
 
+              // TODO: messages regenerate every time so new offer_price is applied but it should not apply until we click filter & process ordeers button
               let message = lib::generate_message(order, offer_price);
 
               Frame::none()
