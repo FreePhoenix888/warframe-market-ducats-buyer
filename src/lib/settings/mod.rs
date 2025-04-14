@@ -71,10 +71,29 @@ pub struct SettingsManager {
 }
 
 impl SettingsManager {
-    const SETTINGS_FILE: &'static str = "settings.json";
+    const STORAGE_KEY: &'static str = "app_settings";
 
+    #[cfg(target_arch = "wasm32")]
     pub fn load() -> Self {
-        if let Ok(file) = std::fs::File::open(Self::SETTINGS_FILE) {
+        use wasm_bindgen::JsCast;
+        let window = web_sys::window().expect("no window");
+        let local_storage = window
+            .local_storage()
+            .expect("no local storage")
+            .expect("local storage undefined");
+
+        if let Ok(Some(data)) = local_storage.get_item(Self::STORAGE_KEY) {
+            if let Ok(settings) = serde_json::from_str(&data) {
+                return settings;
+            }
+        }
+        Self::default()
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn load() -> Self {
+        const SETTINGS_FILE: &str = "settings.json";
+        if let Ok(file) = std::fs::File::open(SETTINGS_FILE) {
             if let Ok(settings) = serde_json::from_reader(file) {
                 return settings;
             }
@@ -82,8 +101,24 @@ impl SettingsManager {
         Self::default()
     }
 
+    #[cfg(target_arch = "wasm32")]
     pub fn save(&self) {
-        if let Ok(file) = std::fs::File::create(Self::SETTINGS_FILE) {
+        use wasm_bindgen::JsCast;
+        let window = web_sys::window().expect("no window");
+        let local_storage = window
+            .local_storage()
+            .expect("no local storage")
+            .expect("local storage undefined");
+
+        if let Ok(data) = serde_json::to_string(self) {
+            let _ = local_storage.set_item(Self::STORAGE_KEY, &data);
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn save(&self) {
+        const SETTINGS_FILE: &str = "settings.json";
+        if let Ok(file) = std::fs::File::create(SETTINGS_FILE) {
             let _ = serde_json::to_writer_pretty(file, self);
         }
     }
