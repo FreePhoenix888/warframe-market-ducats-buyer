@@ -23,99 +23,6 @@ pub struct Preset {
   item_names: String,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-struct UserInputs {
-  max_price_to_search: String,
-  min_quantity_to_search: String,
-  price_to_offer: String,
-  item_names: String,
-  presets: Vec<Preset>,
-  current_preset_name: Option<String>,
-}
-
-impl UserInputs {
-  const SETTINGS_FILE: &'static str = "settings.json";
-
-  pub fn load() -> Self {
-    if let Ok(file) = std::fs::File::open(Self::SETTINGS_FILE) {
-      if let Ok(settings) = serde_json::from_reader(file) {
-        return settings;
-      }
-    }
-    Self::default()
-  }
-
-  pub fn save(&self) {
-    if let Ok(file) = std::fs::File::create(Self::SETTINGS_FILE) {
-      let _ = serde_json::to_writer_pretty(file, self);
-    }
-  }
-
-  pub fn save_as_preset(&mut self, name: String) {
-    let preset = Preset {
-      name: name.clone(),
-      max_price_to_search: self.max_price_to_search.clone(),
-      min_quantity_to_search: self.min_quantity_to_search.clone(),
-      price_to_offer: self.price_to_offer.clone(),
-      item_names: self.item_names.clone(),
-    };
-
-    // Remove existing preset with the same name if it exists
-    self.presets.retain(|p| p.name != name);
-    self.presets.push(preset);
-    self.current_preset_name = Some(name);
-    self.save();
-  }
-
-  pub fn load_preset(&mut self, name: &str) -> bool {
-    if let Some(preset) = self.presets.iter().find(|p| p.name == name) {
-      self.max_price_to_search = preset.max_price_to_search.clone();
-      self.min_quantity_to_search = preset.min_quantity_to_search.clone();
-      self.price_to_offer = preset.price_to_offer.clone();
-      self.item_names = preset.item_names.clone();
-      self.current_preset_name = Some(name.to_string());
-      true
-    } else {
-      false
-    }
-  }
-
-  pub fn delete_preset(&mut self, name: &str) {
-    self.presets.retain(|p| p.name != name);
-    if self.current_preset_name.as_deref() == Some(name) {
-      self.current_preset_name = None;
-    }
-    self.save();
-  }
-
-  pub fn reset_inputs(&mut self) {
-    self.max_price_to_search = lib::MAX_PRICE_TO_SEARCH.to_string();
-    self.min_quantity_to_search = lib::MIN_QUANTITY_TO_SEARCH.to_string();
-    self.price_to_offer = lib::PRICE_TO_OFFER.to_string();
-    self.item_names = lib::PROFITABLE_ITEM_NAMES.join("\n").to_string();
-    // Preserve presets and current_preset_name
-  }
-
-  pub fn delete_all_presets(&mut self) {
-    self.presets.clear();
-    self.current_preset_name = None;
-    self.save();
-  }
-}
-
-impl Default for UserInputs {
-  fn default() -> Self {
-    Self {
-      max_price_to_search: lib::MAX_PRICE_TO_SEARCH.to_string(),
-      min_quantity_to_search: lib::MIN_QUANTITY_TO_SEARCH.to_string(),
-      price_to_offer: lib::PRICE_TO_OFFER.to_string(),
-      item_names: lib::PROFITABLE_ITEM_NAMES.join("\n").to_string(),
-      presets: Vec::new(),
-      current_preset_name: None,
-    }
-  }
-}
-
 struct MyApp {
   rx_fetch: mpsc::Receiver<Result<Vec<lib::Order>, String>>,
   tx_fetch: mpsc::Sender<Result<Vec<lib::Order>, String>>,
@@ -125,7 +32,7 @@ struct MyApp {
   processed_orders: Option<Vec<lib::Order>>,
   loading_fetch: bool,
   loading_process: bool,
-  user_inputs: UserInputs,
+  settings_manager: lib::settings::SettingsManager,
   toasts: Toasts,
   show_settings: bool,
   show_credits: bool,
@@ -138,7 +45,6 @@ impl Default for MyApp {
   fn default() -> Self {
     let (tx_fetch, rx_fetch) = mpsc::channel();
     let (tx_process, rx_process) = mpsc::channel();
-    let user_inputs = UserInputs::load();
     Self {
       rx_fetch,
       tx_fetch,
@@ -148,7 +54,7 @@ impl Default for MyApp {
       processed_orders: None,
       loading_fetch: false,
       loading_process: false,
-      user_inputs,
+      settings_manager: lib::settings::SettingsManager::load(),
       toasts: Toasts::new(),
       show_settings: false,
       show_credits: false,
@@ -209,12 +115,12 @@ impl eframe::App for MyApp {
       }
     }
 
-    let max_price = self.user_inputs.max_price_to_search.parse::<u32>().unwrap_or_default();
-    let min_quantity = self.user_inputs.min_quantity_to_search.parse::<u32>().unwrap_or_default();
-    let offer_price = self.user_inputs.price_to_offer.parse::<u32>().unwrap_or_default();
-    let item_names: Vec<String> = self
-        .user_inputs
-        .item_names
+    let settings = self.settings_manager.get_current_settings();
+    let max_price = settings.max_price_to_search().parse::<u32>().unwrap_or_default();
+    let min_quantity = settings.min_quantity_to_search().parse::<u32>().unwrap_or_default();
+    let offer_price = settings.price_to_offer().parse::<u32>().unwrap_or_default();
+    let item_names: Vec<String> = settings
+        .item_names()
         .lines()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
@@ -358,13 +264,12 @@ impl eframe::App for MyApp {
           .resizable(true)
           .show(ctx, |ui| {
             ui.horizontal(|ui| {
-              // TODO: Reset settings to defaults should not reset presets of settings
               if ui.button("Reset Settings to Defaults").clicked() {
-                self.user_inputs.reset_inputs();
+                self.settings_manager.reset_settings();
               }
 
               if ui.button("Save Settings").clicked() {
-                self.user_inputs.save();
+                self.settings_manager.save();
               }
             });
 
@@ -374,8 +279,7 @@ impl eframe::App for MyApp {
             ui.group(|ui| {
               ui.heading("Presets");
 
-              // Delete button for each preset
-              let presets_len = self.user_inputs.presets.len();
+              let presets_len = self.settings_manager.get_presets().len();
               let should_show_delete_presets_button = presets_len > 0;
               ui.add_enabled_ui(should_show_delete_presets_button, |ui| {
                 if ui.button("Delete All Presets")
@@ -386,13 +290,11 @@ impl eframe::App for MyApp {
                 }
               });
 
-              // Collect preset names and their current status before the UI loop
-              let preset_data: Vec<(String, bool)> = self.user_inputs.presets
+              let preset_data: Vec<(String, bool)> = self.settings_manager.get_presets()
                   .iter()
                   .map(|preset| {
-                    let is_current = self.user_inputs.current_preset_name
-                        .as_ref()
-                        .map_or(false, |current| current == &preset.name);
+                    let is_current = self.settings_manager.get_current_preset_name()
+                        .map_or(false, |current| current == preset.name);
                     (preset.name.clone(), is_current)
                   })
                   .collect();
@@ -405,15 +307,14 @@ impl eframe::App for MyApp {
                         .on_hover_text("Click to load this preset")
                         .clicked()
                     {
-                      self.user_inputs.load_preset(&preset_name);
+                      self.settings_manager.load_preset(&preset_name);
                     }
-
 
                     if ui.small_button("🗑")
                         .on_hover_text("Delete preset")
                         .clicked()
                     {
-                      self.user_inputs.delete_preset(&preset_name);
+                      self.settings_manager.delete_preset(&preset_name);
                     }
                   });
                 }
@@ -428,7 +329,7 @@ impl eframe::App for MyApp {
                     .on_hover_text("Save current settings as a new preset")
                     .clicked() && !self.new_preset_name.is_empty()
                 {
-                  self.user_inputs.save_as_preset(self.new_preset_name.clone());
+                  self.settings_manager.save_as_preset(self.new_preset_name.clone());
                   self.new_preset_name.clear();
                 }
               });
@@ -436,50 +337,51 @@ impl eframe::App for MyApp {
 
             ui.add_space(10.0);
 
-            // Rest of the settings UI remains the same
+            // Settings fields
+            let settings = self.settings_manager.get_current_settings_mut();
+
             ui.label("Max Price:");
-            if let Ok(mut value) = self.user_inputs.max_price_to_search.parse::<u32>() {
+            if let Ok(mut value) = settings.max_price_to_search().parse::<u32>() {
               if ui.add(DragValue::new(&mut value).clamp_range(0..=10).speed(0.02))
                   .changed()
               {
-                self.user_inputs.max_price_to_search = value.to_string();
+                settings.set_max_price_to_search(value.to_string());
               }
             }
-            ui.end_row();
 
             ui.label("Min Quantity:");
-            if let Ok(mut value) = self.user_inputs.min_quantity_to_search.parse::<u32>() {
+            if let Ok(mut value) = settings.min_quantity_to_search().parse::<u32>() {
               if ui.add(DragValue::new(&mut value).clamp_range(0..=10).speed(0.02))
                   .changed()
               {
-                self.user_inputs.min_quantity_to_search = value.to_string();
+                settings.set_min_quantity_to_search(value.to_string());
               }
             }
-            ui.end_row();
 
             ui.label("Offer Price:");
-            if let Ok(mut value) = self.user_inputs.price_to_offer.parse::<u32>() {
+            if let Ok(mut value) = settings.price_to_offer().parse::<u32>() {
               if ui.add(DragValue::new(&mut value).clamp_range(0..=10).speed(0.02))
                   .changed()
               {
-                self.user_inputs.price_to_offer = value.to_string();
+                settings.set_price_to_offer(value.to_string());
               }
             }
-            ui.end_row();
 
             ui.add_space(10.0);
 
+            let mut item_names = settings.item_names().to_string();
             ui.label("Item Names (one per line):");
-            ui.add(
-              TextEdit::multiline(&mut self.user_inputs.item_names)
+            if ui.add(
+              TextEdit::multiline(&mut item_names)
                   .hint_text("Enter item names (one per line)")
                   .desired_width(f32::INFINITY)
                   .min_size([ui.available_width(), 100.0].into()),
-            );
-
-            ui.add_space(10.0);
+            ).changed() {
+              settings.set_item_names(item_names);
+            }
           });
     }
+
 
     if self.show_credits {
       egui::Window::new("Credits")
@@ -596,7 +498,7 @@ impl eframe::App for MyApp {
                     egui::Button::new("Yes, Delete All")
                         .fill(egui::Color32::from_rgb(178, 34, 34))
                   ).clicked() {
-                    self.user_inputs.delete_all_presets();
+                    self.settings_manager.delete_all_presets();
                     self.toasts.warning("All presets have been deleted");
                     self.show_delete_presets_confirmation = false;
                   }
