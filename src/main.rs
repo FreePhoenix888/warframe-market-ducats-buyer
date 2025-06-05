@@ -27,6 +27,8 @@ pub struct Preset {
   item_names: String,
 }
 
+// TODO: Add ability to UPDATE setting presets
+
 struct MyApp {
   rx_fetch: mpsc::Receiver<Result<Vec<lib::Order>, String>>,
   tx_fetch: mpsc::Sender<Result<Vec<lib::Order>, String>>,
