@@ -4,6 +4,7 @@
 mod external_lib;
 mod lib;
 
+use std::collections::HashSet;
 use eframe::egui;
 use eframe::egui::{
   Align, Button, DragValue, Frame, Layout, Rounding, ScrollArea, Spinner,
@@ -13,6 +14,9 @@ use egui_notify::Toasts;
 use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::sync::mpsc::{self, TryRecvError};
+use std::fs::{OpenOptions};
+use std::io::{Write, BufReader, BufRead};
+use std::path::Path;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Preset {
@@ -22,6 +26,9 @@ pub struct Preset {
   price_to_offer: String,
   item_names: String,
 }
+
+// TODO: Add Ignore List
+// Mooney_YT
 
 struct MyApp {
   rx_fetch: mpsc::Receiver<Result<Vec<lib::Order>, String>>,
@@ -39,7 +46,10 @@ struct MyApp {
   show_all_orders: bool,
   new_preset_name: String,
   show_delete_presets_confirmation: bool,
+  contacted_order_ids: HashSet<String>,
 }
+
+const CONTACTED_ORDER_IDS_FILE_PATH: &str = "orders_already_contacted.txt";
 
 impl Default for MyApp {
   fn default() -> Self {
@@ -61,6 +71,7 @@ impl Default for MyApp {
       show_all_orders: false,
       new_preset_name: String::new(),
       show_delete_presets_confirmation: false,
+      contacted_order_ids: load_contacted_order_ids(CONTACTED_ORDER_IDS_FILE_PATH)
     }
   }
 }
@@ -200,6 +211,8 @@ impl eframe::App for MyApp {
               let max_price = max_price;
               let min_quantity = min_quantity;
 
+              let contacted_order_ids = self.contacted_order_ids.clone();
+
               std::thread::spawn(move || {
                 let filter_orders = |order: &lib::Order| -> bool {
                   order.user.status == "ingame"
@@ -207,6 +220,7 @@ impl eframe::App for MyApp {
                       && order.order_type == "sell"
                       && order.platinum <= max_price
                       && order.quantity >= min_quantity
+                      && !contacted_order_ids.contains(&order.id)
                 };
 
                 let processed_orders = orders
@@ -220,6 +234,17 @@ impl eframe::App for MyApp {
 
         let processed_orders_len = self.processed_orders.as_ref().map_or(0, |orders| orders.len());
         ui.label(format!("Processed orders length: {}", processed_orders_len));
+
+        if ui
+            .add_sized([150.0, 30.0], Button::new("Clear Orders That You Already Contacted"))
+            .clicked() {
+          self.contacted_order_ids.clear();
+          if let Err(e) = clear_file(CONTACTED_ORDER_IDS_FILE_PATH) {
+            self.toasts.error(format!("Failed to clear file of contacted orders: {}", e));
+          } else {
+            self.toasts.success(format!("Contacted orders file cleared"));
+          }
+        }
 
         ui.add_space(20.0);
 
@@ -249,7 +274,12 @@ impl eframe::App for MyApp {
                     let button = ui.add_sized([100.0, 100.0], Button::new(message.clone()));
                     if button.clicked() {
                       ui.ctx().copy_text(message.clone());
-                    }
+                      self.contacted_order_ids.insert(order.id.clone());
+                      if let Err(e) = append_order_to_file(CONTACTED_ORDER_IDS_FILE_PATH, order) {
+                        self.toasts.error(format!("Failed to save order to contacted orders file: {}", e));
+                      } else {
+                        self.toasts.success(format!("Order saves to contacted orders file"));
+                      }                    }
                   });
 
               ui.add_space(8.0);
@@ -527,6 +557,78 @@ impl eframe::App for MyApp {
   }
 }
 
+/// Clears the contents of a file at the given path.
+/// If the file does not exist, it will be created as empty.
+/// Returns Ok(()) on success, or a std::io::Error on failure.
+pub fn clear_file<P: AsRef<Path>>(path: P) -> std::io::Result<()> {
+  let file_path = path.as_ref();
+  // Open the file in write mode, truncating it (clearing contents)
+  let mut file = OpenOptions::new()
+      .write(true)
+      .truncate(true)
+      .create(true)
+      .open(file_path)?;
+  // Optionally, write nothing (just to be explicit)
+  file.write_all(b"")?;
+  Ok(())
+}
+
+pub fn append_order_to_file<P: AsRef<Path>>(
+  path: P,
+  order: &lib::Order
+) -> std::io::Result<()> {
+  let file_path = path.as_ref();
+
+  // Collect existing order ids
+  let mut existing_ids = std::collections::HashSet::new();
+  if file_path.exists() {
+    let file = std::fs::File::open(&file_path)?;
+    let reader = BufReader::new(file);
+    for line in reader.lines() {
+      if let Ok(line_str) = line {
+        if let Some(id) = line_str.split(',').next() {
+          existing_ids.insert(id.to_string());
+        }
+      }
+    }
+  }
+
+  if existing_ids.contains(&order.id) {
+    // Already saved
+    return Ok(());
+  }
+
+  let mut file = OpenOptions::new()
+      .create(true)
+      .append(true)
+      .open(file_path)?;
+
+  // Save as CSV: id,ingame_name,item_name,platinum,quantity
+  writeln!(
+    file,
+    "{},{},{},{},{}",
+    order.id,
+    order.user.ingame_name,
+    order.item_name.as_deref().unwrap_or(""),
+    order.platinum,
+    order.quantity
+  )?;
+  Ok(())
+}
+
+fn load_contacted_order_ids<P: AsRef<Path>>(path: P) -> HashSet<String> {
+  let mut ids = HashSet::new();
+  if let Ok(file) = std::fs::File::open(path) {
+    let reader = BufReader::new(file);
+    for line in reader.lines().flatten() {
+      if let Some(id) = line.split(',').next() {
+        ids.insert(id.to_string());
+      }
+    }
+  }
+  ids
+}
+
 fn main() -> eframe::Result {
   if std::env::var("RUST_LOG").is_err() {
     unsafe {
@@ -544,3 +646,4 @@ fn main() -> eframe::Result {
     Box::new(|_cc| Ok(Box::<MyApp>::default())),
   )
 }
+
