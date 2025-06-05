@@ -27,9 +27,6 @@ pub struct Preset {
   item_names: String,
 }
 
-// TODO: Add Ignore List
-// Mooney_YT
-
 struct MyApp {
   rx_fetch: mpsc::Receiver<Result<Vec<lib::Order>, String>>,
   tx_fetch: mpsc::Sender<Result<Vec<lib::Order>, String>>,
@@ -212,6 +209,7 @@ impl eframe::App for MyApp {
               let min_quantity = min_quantity;
 
               let contacted_order_ids = self.contacted_order_ids.clone();
+              let ignored_nicknames = settings.ignored_user_nicknames().iter().cloned().collect::<std::collections::HashSet<_>>();
 
               std::thread::spawn(move || {
                 let filter_orders = |order: &lib::Order| -> bool {
@@ -221,6 +219,7 @@ impl eframe::App for MyApp {
                       && order.platinum <= max_price
                       && order.quantity >= min_quantity
                       && !contacted_order_ids.contains(&order.id)
+                      && !ignored_nicknames.contains(&order.user.ingame_name)
                 };
 
                 let processed_orders = orders
@@ -409,6 +408,22 @@ impl eframe::App for MyApp {
                   .min_size([ui.available_width(), 100.0].into()),
             ).changed() {
               settings.set_item_names(item_names);
+            }
+
+            ui.label("Ignored User Nicknames (one per line):");
+            let mut ignored_nicknames_str = settings.ignored_user_nicknames().join("\n");
+            if ui.add(
+              TextEdit::multiline(&mut ignored_nicknames_str)
+                  .hint_text("Enter user nicknames to ignore (one per line)")
+                  .desired_width(f32::INFINITY)
+                  .min_size([ui.available_width(), 60.0].into()),
+            ).changed() {
+              let new_list: Vec<String> = ignored_nicknames_str
+                  .lines()
+                  .map(|s| s.trim().to_string())
+                  .filter(|s| !s.is_empty())
+                  .collect();
+              settings.set_ignored_user_nicknames(new_list);
             }
           });
     }
