@@ -93,7 +93,7 @@ mod web_storage {
 mod file_storage {
     use super::*;
     use std::fs;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     pub struct FileStorageBackend {
         storage_dir: PathBuf,
@@ -101,9 +101,11 @@ mod file_storage {
 
     impl FileStorageBackend {
         pub fn new() -> Self {
-            let storage_dir = dirs::data_local_dir()
-                .unwrap_or_else(|| PathBuf::from("."))
-                .join("app_storage");
+            let exe_path = std::env::current_exe()
+                .unwrap_or_else(|_| PathBuf::from("."));
+            let storage_dir = exe_path.parent()
+                .unwrap_or_else(|| Path::new("."))
+                .to_path_buf();
             fs::create_dir_all(&storage_dir).ok();
             Self { storage_dir }
         }
@@ -123,7 +125,9 @@ mod file_storage {
         }
 
         fn set(&self, key: &str, value: &str) -> Result<(), StorageError> {
-            fs::write(self.get_file_path(key), value)
+            let json: serde_json::Value = serde_json::from_str(value)?;
+            let pretty = serde_json::to_string_pretty(&json)?;
+            fs::write(self.get_file_path(key), pretty)
                 .map_err(|e| StorageError::StorageError(e.to_string()))
         }
 
