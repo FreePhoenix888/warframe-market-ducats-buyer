@@ -209,7 +209,7 @@ impl eframe::App for MyApp {
               let min_quantity = min_quantity;
 
               let contacted_order_ids = self.contacted_order_ids.clone();
-              let ignored_nicknames = settings.ignored_user_nicknames().iter().cloned().collect::<std::collections::HashSet<_>>();
+              let ignored_nicknames = self.settings_manager.ignored_user_nicknames().iter().cloned().collect::<std::collections::HashSet<_>>();
 
               std::thread::spawn(move || {
                 let filter_orders = |order: &lib::Order| -> bool {
@@ -305,145 +305,147 @@ impl eframe::App for MyApp {
 
             ui.add_space(10.0);
 
-            // Presets section
+            // --- Preset settings section ---
             ui.group(|ui| {
-              ui.heading("Presets");
+              ui.heading("Preset Settings");
 
-              // Collect preset names and whether they are current into an owned Vec
-              let preset_data: Vec<(String, bool)> = self.settings_manager
-                  .get_presets()
-                  .iter()
-                  .map(|preset| {
-                    let is_current = self.settings_manager
-                        .get_current_preset_name()
-                        .map_or(false, |c| c == preset.name);
-                    (preset.name.clone(), is_current)
-                  })
-                  .collect();
+              // Presets section
+              ui.group(|ui| {
+                ui.label(egui::RichText::new("Presets").strong());
 
-              if preset_data.is_empty() {
-                ui.label("No presets saved.");
-              } else {
-                for (preset_name, is_current) in &preset_data {
-                  egui::Frame::group(ui.style()).show(ui, |ui| {
-                    ui.vertical(|ui| {
-                      // Highlight current
-                      if *is_current {
-                        ui.colored_label(egui::Color32::LIGHT_GREEN, preset_name);
-                      } else {
-                        ui.label(preset_name);
-                      }
-                      ui.horizontal(|ui| {
-                        if ui.button("Load").on_hover_text("Load this preset").clicked() {
-                          self.settings_manager.load_preset(preset_name);
-                        }
-                        if ui.button("Delete").on_hover_text("Delete this preset").clicked() {
-                          self.settings_manager.delete_preset(preset_name);
-                        }
+                let preset_data: Vec<(String, bool)> = self.settings_manager
+                    .get_presets()
+                    .iter()
+                    .map(|preset| {
+                      let is_current = self.settings_manager
+                          .get_current_preset_name()
+                          .map_or(false, |c| c == preset.name);
+                      (preset.name.clone(), is_current)
+                    })
+                    .collect();
+
+                if preset_data.is_empty() {
+                  ui.label("No presets saved.");
+                } else {
+                  for (preset_name, is_current) in &preset_data {
+                    egui::Frame::group(ui.style()).show(ui, |ui| {
+                      ui.vertical(|ui| {
+                        // Highlight current
                         if *is_current {
-                          if ui.button("Update").on_hover_text("Update this preset with current settings").clicked() {
-                            if self.settings_manager.update_current_preset() {
-                              self.toasts.success("Preset updated with current settings");
-                            } else {
-                              self.toasts.error("Failed to update preset");
+                          ui.colored_label(egui::Color32::LIGHT_GREEN, preset_name);
+                        } else {
+                          ui.label(preset_name);
+                        }
+                        ui.horizontal(|ui| {
+                          if ui.button("Load").on_hover_text("Load this preset").clicked() {
+                            self.settings_manager.load_preset(preset_name);
+                          }
+                          if ui.button("Delete").on_hover_text("Delete this preset").clicked() {
+                            self.settings_manager.delete_preset(preset_name);
+                          }
+                          if *is_current {
+                            if ui.button("Update").on_hover_text("Update this preset with current settings").clicked() {
+                              if self.settings_manager.update_current_preset() {
+                                self.toasts.success("Preset updated with current settings");
+                              } else {
+                                self.toasts.error("Failed to update preset");
+                              }
                             }
                           }
-                        }
+                        });
                       });
                     });
-                  });
-                  ui.add_space(4.0);
+                    ui.add_space(4.0);
+                  }
                 }
-              }
 
-              // "Delete All" on its own line
-              if !preset_data.is_empty() {
-                if ui.button("Delete All Presets")
-                    .on_hover_text("Warning: This will permanently delete all saved presets")
-                    .clicked()
-                {
-                  self.show_delete_presets_confirmation = true;
+                if !preset_data.is_empty() {
+                  if ui.button("Delete All Presets")
+                      .on_hover_text("Warning: This will permanently delete all saved presets")
+                      .clicked()
+                  {
+                    self.show_delete_presets_confirmation = true;
+                  }
+                  ui.add_space(8.0);
                 }
-                ui.add_space(8.0);
-              }
 
-              // "Save as Preset" section
-              ui.horizontal(|ui| {
-                ui.text_edit_singleline(&mut self.new_preset_name)
-                    .on_hover_text("Enter preset name");
-                if ui.button("Save as Preset")
-                    .on_hover_text("Save current settings as a new preset")
-                    .clicked() && !self.new_preset_name.is_empty()
-                {
-                  self.settings_manager.save_as_preset(self.new_preset_name.clone());
-                  self.new_preset_name.clear();
-                }
+                // "Save as Preset" section
+                ui.horizontal(|ui| {
+                  ui.text_edit_singleline(&mut self.new_preset_name)
+                      .on_hover_text("Enter preset name");
+                  if ui.button("Save as Preset")
+                      .on_hover_text("Save current settings as a new preset")
+                      .clicked() && !self.new_preset_name.is_empty()
+                  {
+                    self.settings_manager.save_as_preset(self.new_preset_name.clone());
+                    self.new_preset_name.clear();
+                  }
+                });
               });
+
+              ui.add_space(10.0);
+
+              // Settings fields (per-preset)
+              let settings = self.settings_manager.get_current_settings_mut();
+
+              ui.label("Max Price:");
+              if let Ok(mut value) = settings.max_price_to_search().parse::<u32>() {
+                if ui.add(DragValue::new(&mut value).clamp_range(0..=10).speed(0.02)).changed() {
+                  settings.set_max_price_to_search(value.to_string());
+                }
+              }
+
+              ui.label("Min Quantity:");
+              if let Ok(mut value) = settings.min_quantity_to_search().parse::<u32>() {
+                if ui.add(DragValue::new(&mut value).clamp_range(0..=10).speed(0.02)).changed() {
+                  settings.set_min_quantity_to_search(value.to_string());
+                }
+              }
+
+              ui.label("Offer Price:");
+              if let Ok(mut value) = settings.price_to_offer().parse::<u32>() {
+                if ui.add(DragValue::new(&mut value).clamp_range(0..=10).speed(0.02)).changed() {
+                  settings.set_price_to_offer(value.to_string());
+                }
+              }
+
+              ui.add_space(10.0);
+
+              let mut item_names = settings.item_names().to_string();
+              ui.label("Item Names (one per line):");
+              if ui.add(
+                TextEdit::multiline(&mut item_names)
+                    .hint_text("Enter item names (one per line)")
+                    .desired_width(f32::INFINITY)
+                    .min_size([ui.available_width(), 100.0].into()),
+              ).changed() {
+                settings.set_item_names(item_names);
+              }
             });
 
-            ui.add_space(10.0);
+            ui.add_space(16.0);
 
-            // Settings fields
-            let settings = self.settings_manager.get_current_settings_mut();
-
-            ui.label("Max Price:");
-            if let Ok(mut value) = settings.max_price_to_search().parse::<u32>() {
-              if ui.add(DragValue::new(&mut value).clamp_range(0..=10).speed(0.02))
-                  .changed()
-              {
-                settings.set_max_price_to_search(value.to_string());
+            // --- Global settings section ---
+            ui.group(|ui| {
+              ui.heading("Global Settings");
+              ui.label("Ignored User Nicknames (one per line):");
+              let mut ignored_nicknames_str = self.settings_manager.ignored_user_nicknames().join("\n");
+              if ui.add(
+                TextEdit::multiline(&mut ignored_nicknames_str)
+                    .hint_text("Enter user nicknames to ignore (one per line)")
+                    .desired_width(f32::INFINITY)
+                    .min_size([ui.available_width(), 60.0].into()),
+              ).changed() {
+                let new_list: Vec<String> = ignored_nicknames_str
+                    .lines()
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                self.settings_manager.set_ignored_user_nicknames(new_list);
               }
-            }
-
-            ui.label("Min Quantity:");
-            if let Ok(mut value) = settings.min_quantity_to_search().parse::<u32>() {
-              if ui.add(DragValue::new(&mut value).clamp_range(0..=10).speed(0.02))
-                  .changed()
-              {
-                settings.set_min_quantity_to_search(value.to_string());
-              }
-            }
-
-            ui.label("Offer Price:");
-            if let Ok(mut value) = settings.price_to_offer().parse::<u32>() {
-              if ui.add(DragValue::new(&mut value).clamp_range(0..=10).speed(0.02))
-                  .changed()
-              {
-                settings.set_price_to_offer(value.to_string());
-              }
-            }
-
-            ui.add_space(10.0);
-
-            let mut item_names = settings.item_names().to_string();
-            ui.label("Item Names (one per line):");
-            if ui.add(
-              TextEdit::multiline(&mut item_names)
-                  .hint_text("Enter item names (one per line)")
-                  .desired_width(f32::INFINITY)
-                  .min_size([ui.available_width(), 100.0].into()),
-            ).changed() {
-              settings.set_item_names(item_names);
-            }
-
-            ui.label("Ignored User Nicknames (one per line):");
-            let mut ignored_nicknames_str = settings.ignored_user_nicknames().join("\n");
-            if ui.add(
-              TextEdit::multiline(&mut ignored_nicknames_str)
-                  .hint_text("Enter user nicknames to ignore (one per line)")
-                  .desired_width(f32::INFINITY)
-                  .min_size([ui.available_width(), 60.0].into()),
-            ).changed() {
-              let new_list: Vec<String> = ignored_nicknames_str
-                  .lines()
-                  .map(|s| s.trim().to_string())
-                  .filter(|s| !s.is_empty())
-                  .collect();
-              settings.set_ignored_user_nicknames(new_list);
-            }
+            });
           });
     }
-
 
     if self.show_credits {
       egui::Window::new("Credits")

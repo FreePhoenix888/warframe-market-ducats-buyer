@@ -8,8 +8,6 @@ pub struct Settings {
     min_quantity_to_search: String,
     price_to_offer: String,
     item_names: String,
-    #[serde(default)]
-    ignored_user_nicknames: Vec<String>,
 }
 
 impl Settings {
@@ -30,10 +28,6 @@ impl Settings {
         &self.item_names
     }
 
-    pub fn ignored_user_nicknames(&self) -> &Vec<String> {
-        &self.ignored_user_nicknames
-    }
-
     // Setters
     pub fn set_max_price_to_search(&mut self, value: String) {
         self.max_price_to_search = value;
@@ -50,20 +44,6 @@ impl Settings {
     pub fn set_item_names(&mut self, value: String) {
         self.item_names = value;
     }
-
-    pub fn set_ignored_user_nicknames(&mut self, nicknames: Vec<String>) {
-        self.ignored_user_nicknames = nicknames;
-    }
-
-    pub fn add_ignored_user_nickname(&mut self, nickname: String) {
-        if !self.ignored_user_nicknames.contains(&nickname) {
-            self.ignored_user_nicknames.push(nickname);
-        }
-    }
-
-    pub fn remove_ignored_user_nickname(&mut self, nickname: &str) {
-        self.ignored_user_nicknames.retain(|n| n != nickname);
-    }
 }
 
 impl Default for Settings {
@@ -73,7 +53,6 @@ impl Default for Settings {
             min_quantity_to_search: lib::MIN_QUANTITY_TO_SEARCH.to_string(),
             price_to_offer: lib::PRICE_TO_OFFER.to_string(),
             item_names: lib::PROFITABLE_ITEM_NAMES.join("\n").to_string(),
-            ignored_user_nicknames: Vec::new(),
         }
     }
 }
@@ -90,6 +69,9 @@ pub struct SettingsManager {
     current_settings: Settings,
     pub(crate) presets: Vec<Preset>,
     pub(crate) current_preset_name: Option<String>,
+
+    #[serde(default)]
+    pub ignored_user_nicknames: Vec<String>,
 }
 
 impl SettingsManager {
@@ -143,7 +125,6 @@ impl SettingsManager {
 
     pub fn reset_settings(&mut self) {
         self.current_settings = Settings::default();
-        // Preserve presets and current_preset_name
     }
 
     pub fn delete_all_presets(&mut self) {
@@ -180,6 +161,27 @@ impl SettingsManager {
         }
         false
     }
+
+    pub fn ignored_user_nicknames(&self) -> &Vec<String> {
+        &self.ignored_user_nicknames
+    }
+
+    pub fn set_ignored_user_nicknames(&mut self, nicknames: Vec<String>) {
+        self.ignored_user_nicknames = nicknames;
+        self.save();
+    }
+
+    pub fn add_ignored_user_nickname(&mut self, nickname: String) {
+        if !self.ignored_user_nicknames.contains(&nickname) {
+            self.ignored_user_nicknames.push(nickname);
+            self.save();
+        }
+    }
+
+    pub fn remove_ignored_user_nickname(&mut self, nickname: &str) {
+        self.ignored_user_nicknames.retain(|n| n != nickname);
+        self.save();
+    }
 }
 
 impl Default for SettingsManager {
@@ -188,6 +190,7 @@ impl Default for SettingsManager {
             current_settings: Settings::default(),
             presets: Vec::new(),
             current_preset_name: None,
+            ignored_user_nicknames: Vec::new(),
         }
     }
 }
