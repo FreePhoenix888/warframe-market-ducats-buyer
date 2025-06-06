@@ -431,18 +431,14 @@ pub fn generate_message(order: &Order, desired_price: u32) -> String {
 
     if quantity == 1 {
         format!(
-            "/w {user} Hi, {user}! \
-                You have WTS order: {item_name} for {platinum} :platinum: for each on warframe.market. \
-                I want to buy! :)",
+            "/w {user} Hey! Saw your [{item_name}] for {platinum}:platinum: on warframe.market. Want to grab it :)",
             user = user,
             item_name = item_name,
             platinum = platinum,
         )
     } else if price_to_offer == platinum {
         format!(
-            "/w {user} Hi, {user}! \
-                You have WTS order: {item_name} for {platinum} :platinum: for each on warframe.market. \
-                I want to buy all {quantity} pieces",
+            "/w {user} Hi! I'd like to buy {quantity}x [{item_name}] at your price ({platinum}:platinum: each)",
             user = user,
             item_name = item_name,
             platinum = platinum,
@@ -450,9 +446,7 @@ pub fn generate_message(order: &Order, desired_price: u32) -> String {
         )
     } else {
         format!(
-            "/w {user} Hi, {user}! \
-                You have WTS order: {item_name} for {platinum} :platinum: for each on warframe.market. \
-                I want to buy all with discount {price_to_offer}:platinum:*{quantity}={total_price}:platinum: if you are interested :)",
+            "/w {user} Hey! Interested in {quantity}x [{item_name}] — can do {price_to_offer}:platinum: each (your price was {platinum}). Total: {total_price}:platinum:",
             user = user,
             item_name = item_name,
             platinum = platinum,
