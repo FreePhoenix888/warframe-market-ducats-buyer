@@ -167,6 +167,19 @@ impl SettingsManager {
     pub fn get_current_preset_name(&self) -> Option<&str> {
         self.current_preset_name.as_deref()
     }
+
+    /// Update the currently loaded preset (if any) with the current settings.
+    /// Returns true if updated, false if there was no current preset selected.
+    pub fn update_current_preset(&mut self) -> bool {
+        if let Some(ref name) = self.current_preset_name {
+            if let Some(preset) = self.presets.iter_mut().find(|p| &p.name == name) {
+                preset.settings = self.current_settings.clone();
+                self.save();
+                return true;
+            }
+        }
+        false
+    }
 }
 
 impl Default for SettingsManager {

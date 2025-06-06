@@ -27,8 +27,6 @@ pub struct Preset {
   item_names: String,
 }
 
-// TODO: Add ability to UPDATE setting presets
-
 struct MyApp {
   rx_fetch: mpsc::Receiver<Result<Vec<lib::Order>, String>>,
   tx_fetch: mpsc::Sender<Result<Vec<lib::Order>, String>>,
@@ -311,52 +309,68 @@ impl eframe::App for MyApp {
             ui.group(|ui| {
               ui.heading("Presets");
 
-              let presets_len = self.settings_manager.get_presets().len();
-              let should_show_delete_presets_button = presets_len > 0;
-              ui.add_enabled_ui(should_show_delete_presets_button, |ui| {
+              // Collect preset names and whether they are current into an owned Vec
+              let preset_data: Vec<(String, bool)> = self.settings_manager
+                  .get_presets()
+                  .iter()
+                  .map(|preset| {
+                    let is_current = self.settings_manager
+                        .get_current_preset_name()
+                        .map_or(false, |c| c == preset.name);
+                    (preset.name.clone(), is_current)
+                  })
+                  .collect();
+
+              if preset_data.is_empty() {
+                ui.label("No presets saved.");
+              } else {
+                for (preset_name, is_current) in &preset_data {
+                  egui::Frame::group(ui.style()).show(ui, |ui| {
+                    ui.vertical(|ui| {
+                      // Highlight current
+                      if *is_current {
+                        ui.colored_label(egui::Color32::LIGHT_GREEN, preset_name);
+                      } else {
+                        ui.label(preset_name);
+                      }
+                      ui.horizontal(|ui| {
+                        if ui.button("Load").on_hover_text("Load this preset").clicked() {
+                          self.settings_manager.load_preset(preset_name);
+                        }
+                        if ui.button("Delete").on_hover_text("Delete this preset").clicked() {
+                          self.settings_manager.delete_preset(preset_name);
+                        }
+                        if *is_current {
+                          if ui.button("Update").on_hover_text("Update this preset with current settings").clicked() {
+                            if self.settings_manager.update_current_preset() {
+                              self.toasts.success("Preset updated with current settings");
+                            } else {
+                              self.toasts.error("Failed to update preset");
+                            }
+                          }
+                        }
+                      });
+                    });
+                  });
+                  ui.add_space(4.0);
+                }
+              }
+
+              // "Delete All" on its own line
+              if !preset_data.is_empty() {
                 if ui.button("Delete All Presets")
                     .on_hover_text("Warning: This will permanently delete all saved presets")
                     .clicked()
                 {
                   self.show_delete_presets_confirmation = true;
                 }
-              });
+                ui.add_space(8.0);
+              }
 
-              let preset_data: Vec<(String, bool)> = self.settings_manager.get_presets()
-                  .iter()
-                  .map(|preset| {
-                    let is_current = self.settings_manager.get_current_preset_name()
-                        .map_or(false, |current| current == preset.name);
-                    (preset.name.clone(), is_current)
-                  })
-                  .collect();
-
-              // Show existing presets as buttons
-              ui.horizontal_wrapped(|ui| {
-                for (preset_name, is_current) in preset_data {
-                  ui.horizontal(|ui| {
-                    if ui.button(&preset_name)
-                        .on_hover_text("Click to load this preset")
-                        .clicked()
-                    {
-                      self.settings_manager.load_preset(&preset_name);
-                    }
-
-                    if ui.small_button("🗑")
-                        .on_hover_text("Delete preset")
-                        .clicked()
-                    {
-                      self.settings_manager.delete_preset(&preset_name);
-                    }
-                  });
-                }
-              });
-
-              // Save new preset section
+              // "Save as Preset" section
               ui.horizontal(|ui| {
                 ui.text_edit_singleline(&mut self.new_preset_name)
                     .on_hover_text("Enter preset name");
-
                 if ui.button("Save as Preset")
                     .on_hover_text("Save current settings as a new preset")
                     .clicked() && !self.new_preset_name.is_empty()
