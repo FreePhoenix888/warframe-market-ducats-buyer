@@ -231,14 +231,6 @@ impl eframe::App for MyApp {
         let processed_orders_len = self.processed_orders.as_ref().map_or(0, |orders| orders.len());
         ui.label(format!("Processed orders length: {}", processed_orders_len));
 
-        if ui
-            .add_sized([150.0, 30.0], Button::new("Clear Orders That You Already Contacted"))
-            .clicked() {
-          self.settings_manager.clear_contacted_order_ids();
-          self.toasts.success("Contacted orders IDs cleared");
-        }
-        ui.add_space(20.0);
-
         if self.loading_fetch {
           ui.add(Spinner::new().size(32.0));
         }
