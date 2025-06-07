@@ -435,20 +435,23 @@ pub fn generate_message(order: &Order, desired_price: u32) -> String {
         format!("[{}]", item_name)
     };
 
-    if quantity == 1 {
+    let is_offer_equal = price_to_offer == platinum;
+
+    if quantity == 1 && is_offer_equal {
         format!(
-            "/w {user} Hey! Saw your {linked_item_name} for {platinum}:platinum: — I'd love to grab it if it's still available :)",
+            "/w {user} Hi! I want to buy: \"{linked_item_name}\" for {platinum} platinum. (warframe.market)"
         )
-    } else if price_to_offer == platinum {
+    } else if is_offer_equal {
         format!(
-            "/w {user} Hi! I'd like to grab {quantity}x {linked_item_name} at your listed price ({platinum}:platinum: each). Thanks!",
+            "/w {user} Hi! I’d like to buy {quantity} {linked_item_name} for {platinum}:platinum: each (Total: {total_price}:platinum:)."
         )
     } else {
         format!(
-            "/w {user} Hey! I'm interested in {quantity}x {linked_item_name}. Would you consider {price_to_offer}:platinum: each? (Total: {total_price}:platinum:) Totally fine if not, just thought I’d ask :)",
+            "/w {user} Hi! Interested in {quantity} {linked_item_name}. Listed at {platinum}:platinum:, would you accept {price_to_offer}:platinum: each?"
         )
     }
 }
+
 
 /// Generates messages for all processed orders.
 pub fn generate_messages(orders: &[Order], desired_price: u32) -> Vec<String> {
