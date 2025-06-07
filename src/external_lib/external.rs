@@ -443,7 +443,7 @@ pub fn generate_message(order: &Order, desired_price: u32) -> String {
         )
     } else if is_offer_equal {
         format!(
-            "/w {user} Hi! I’d like to buy {quantity} {linked_item_name} for {platinum}:platinum: each (Total: {total_price}:platinum:)."
+            "/w {user} Hi! I want to buy: {quantity} {linked_item_name} for {platinum}:platinum: each (Total: {total_price}:platinum:)."
         )
     } else {
         format!(
