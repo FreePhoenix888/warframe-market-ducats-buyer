@@ -429,30 +429,23 @@ pub fn generate_message(order: &Order, desired_price: u32) -> String {
     let total_price = price_to_offer * quantity;
     let item_name = order.item_name.as_ref().unwrap();
 
+    let linked_item_name = if let Some(stripped) = item_name.strip_suffix(" Blueprint") {
+        format!("[{}] Blueprint", stripped)
+    } else {
+        format!("[{}]", item_name)
+    };
+
     if quantity == 1 {
         format!(
-            "/w {user} Hey! Saw your [{item_name}] for {platinum}:platinum: on warframe.market. Want to grab it :)",
-            user = user,
-            item_name = item_name,
-            platinum = platinum,
+            "/w {user} Hey! Saw your {linked_item_name} for {platinum}:platinum: — I'd love to grab it if it's still available :)",
         )
     } else if price_to_offer == platinum {
         format!(
-            "/w {user} Hi! I'd like to buy {quantity}x [{item_name}] at your price ({platinum}:platinum: each)",
-            user = user,
-            item_name = item_name,
-            platinum = platinum,
-            quantity = quantity,
+            "/w {user} Hi! I'd like to grab {quantity}x {linked_item_name} at your listed price ({platinum}:platinum: each). Thanks!",
         )
     } else {
         format!(
-            "/w {user} Hey! Interested in {quantity}x [{item_name}] — can do {price_to_offer}:platinum: each (your price was {platinum}). Total: {total_price}:platinum:",
-            user = user,
-            item_name = item_name,
-            platinum = platinum,
-            price_to_offer = price_to_offer,
-            quantity = quantity,
-            total_price = total_price
+            "/w {user} Hey! I'm interested in {quantity}x {linked_item_name}. Would you consider {price_to_offer}:platinum: each? (Total: {total_price}:platinum:) Totally fine if not, just thought I’d ask :)",
         )
     }
 }
