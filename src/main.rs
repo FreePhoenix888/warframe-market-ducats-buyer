@@ -43,10 +43,7 @@ struct MyApp {
   show_all_orders: bool,
   new_preset_name: String,
   show_delete_presets_confirmation: bool,
-  contacted_order_ids: HashSet<String>,
 }
-
-const CONTACTED_ORDER_IDS_FILE_PATH: &str = "orders_already_contacted.txt";
 
 impl Default for MyApp {
   fn default() -> Self {
@@ -68,7 +65,6 @@ impl Default for MyApp {
       show_all_orders: false,
       new_preset_name: String::new(),
       show_delete_presets_confirmation: false,
-      contacted_order_ids: load_contacted_order_ids(CONTACTED_ORDER_IDS_FILE_PATH)
     }
   }
 }
@@ -208,7 +204,8 @@ impl eframe::App for MyApp {
               let max_price = max_price;
               let min_quantity = min_quantity;
 
-              let contacted_order_ids = self.contacted_order_ids.clone();
+              let contacted_order_ids: std::collections::HashSet<_> =
+                  self.settings_manager.contacted_order_ids().iter().cloned().collect();
               let ignored_nicknames = self.settings_manager.ignored_user_nicknames().iter().cloned().collect::<std::collections::HashSet<_>>();
 
               std::thread::spawn(move || {
@@ -237,14 +234,9 @@ impl eframe::App for MyApp {
         if ui
             .add_sized([150.0, 30.0], Button::new("Clear Orders That You Already Contacted"))
             .clicked() {
-          self.contacted_order_ids.clear();
-          if let Err(e) = clear_file(CONTACTED_ORDER_IDS_FILE_PATH) {
-            self.toasts.error(format!("Failed to clear file of contacted orders: {}", e));
-          } else {
-            self.toasts.success(format!("Contacted orders file cleared"));
-          }
+          self.settings_manager.clear_contacted_order_ids();
+          self.toasts.success("Contacted orders IDs cleared");
         }
-
         ui.add_space(20.0);
 
         if self.loading_fetch {
@@ -273,12 +265,8 @@ impl eframe::App for MyApp {
                     let button = ui.add_sized([100.0, 100.0], Button::new(message.clone()));
                     if button.clicked() {
                       ui.ctx().copy_text(message.clone());
-                      self.contacted_order_ids.insert(order.id.clone());
-                      if let Err(e) = append_order_to_file(CONTACTED_ORDER_IDS_FILE_PATH, order) {
-                        self.toasts.error(format!("Failed to save order to contacted orders file: {}", e));
-                      } else {
-                        self.toasts.success(format!("Order saves to contacted orders file"));
-                      }                    }
+                      self.settings_manager.add_contacted_order_id(order.id.clone());
+                    }
                   });
 
               ui.add_space(8.0);
@@ -446,6 +434,29 @@ impl eframe::App for MyApp {
                           .collect();
                       self.settings_manager.set_ignored_user_nicknames(new_list);
                     }
+
+                    ui.add_space(10.0);
+                    ui.label("Contacted Order IDs (one per line):");
+                    let mut contacted_ids = self.settings_manager.contacted_order_ids().join("\n");
+                    if ui.add(
+                      TextEdit::multiline(&mut contacted_ids)
+                          .hint_text("Order IDs you have already contacted (one per line)")
+                          .desired_width(f32::INFINITY)
+                          .min_size([ui.available_width(), 60.0].into()),
+                    ).changed() {
+                      let new_list: Vec<String> = contacted_ids
+                          .lines()
+                          .map(|s| s.trim().to_string())
+                          .filter(|s| !s.is_empty())
+                          .collect();
+                      self.settings_manager.set_contacted_order_ids(new_list);
+                    }
+                    if ui.button("Clear All Contacted Order IDs")
+                        .on_hover_text("Remove all contacted order IDs")
+                        .clicked() {
+                      self.settings_manager.clear_contacted_order_ids();
+                      self.toasts.success("All contacted order IDs cleared");
+                    }
                   });
 
                 });
@@ -593,78 +604,6 @@ impl eframe::App for MyApp {
     self.toasts.show(ctx);
     ctx.request_repaint();
   }
-}
-
-/// Clears the contents of a file at the given path.
-/// If the file does not exist, it will be created as empty.
-/// Returns Ok(()) on success, or a std::io::Error on failure.
-pub fn clear_file<P: AsRef<Path>>(path: P) -> std::io::Result<()> {
-  let file_path = path.as_ref();
-  // Open the file in write mode, truncating it (clearing contents)
-  let mut file = OpenOptions::new()
-      .write(true)
-      .truncate(true)
-      .create(true)
-      .open(file_path)?;
-  // Optionally, write nothing (just to be explicit)
-  file.write_all(b"")?;
-  Ok(())
-}
-
-pub fn append_order_to_file<P: AsRef<Path>>(
-  path: P,
-  order: &lib::Order
-) -> std::io::Result<()> {
-  let file_path = path.as_ref();
-
-  // Collect existing order ids
-  let mut existing_ids = std::collections::HashSet::new();
-  if file_path.exists() {
-    let file = std::fs::File::open(&file_path)?;
-    let reader = BufReader::new(file);
-    for line in reader.lines() {
-      if let Ok(line_str) = line {
-        if let Some(id) = line_str.split(',').next() {
-          existing_ids.insert(id.to_string());
-        }
-      }
-    }
-  }
-
-  if existing_ids.contains(&order.id) {
-    // Already saved
-    return Ok(());
-  }
-
-  let mut file = OpenOptions::new()
-      .create(true)
-      .append(true)
-      .open(file_path)?;
-
-  // Save as CSV: id,ingame_name,item_name,platinum,quantity
-  writeln!(
-    file,
-    "{},{},{},{},{}",
-    order.id,
-    order.user.ingame_name,
-    order.item_name.as_deref().unwrap_or(""),
-    order.platinum,
-    order.quantity
-  )?;
-  Ok(())
-}
-
-fn load_contacted_order_ids<P: AsRef<Path>>(path: P) -> HashSet<String> {
-  let mut ids = HashSet::new();
-  if let Ok(file) = std::fs::File::open(path) {
-    let reader = BufReader::new(file);
-    for line in reader.lines().flatten() {
-      if let Some(id) = line.split(',').next() {
-        ids.insert(id.to_string());
-      }
-    }
-  }
-  ids
 }
 
 fn main() -> eframe::Result {

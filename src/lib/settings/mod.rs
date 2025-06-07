@@ -72,6 +72,9 @@ pub struct SettingsManager {
 
     #[serde(default)]
     pub ignored_user_nicknames: Vec<String>,
+
+    #[serde(default)]
+    pub contacted_order_ids: Vec<String>,
 }
 
 impl SettingsManager {
@@ -182,6 +185,28 @@ impl SettingsManager {
         self.ignored_user_nicknames.retain(|n| n != nickname);
         self.save();
     }
+
+    pub fn contacted_order_ids(&self) -> &Vec<String> {
+        &self.contacted_order_ids
+    }
+    pub fn set_contacted_order_ids(&mut self, ids: Vec<String>) {
+        self.contacted_order_ids = ids;
+        self.save();
+    }
+    pub fn add_contacted_order_id(&mut self, id: String) {
+        if !self.contacted_order_ids.contains(&id) {
+            self.contacted_order_ids.push(id);
+            self.save();
+        }
+    }
+    pub fn remove_contacted_order_id(&mut self, id: &str) {
+        self.contacted_order_ids.retain(|x| x != id);
+        self.save();
+    }
+    pub fn clear_contacted_order_ids(&mut self) {
+        self.contacted_order_ids.clear();
+        self.save();
+    }
 }
 
 impl Default for SettingsManager {
@@ -191,6 +216,7 @@ impl Default for SettingsManager {
             presets: Vec::new(),
             current_preset_name: None,
             ignored_user_nicknames: Vec::new(),
+            contacted_order_ids: Vec::new(),
         }
     }
 }
