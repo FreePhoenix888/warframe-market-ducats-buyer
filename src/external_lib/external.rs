@@ -447,7 +447,7 @@ pub fn generate_message(order: &Order, desired_price: u32) -> String {
         )
     } else {
         format!(
-            "/w {user} Hi! Interested in {quantity} {linked_item_name}. Listed at {platinum}:platinum:, would you accept {price_to_offer}:platinum: each?"
+            "/w {user} Hi! Interested in {quantity} {linked_item_name}. Listed at {platinum}:platinum:, would you accept {price_to_offer}:platinum: each? Total: {total_price}:platinum:"
         )
     }
 }
